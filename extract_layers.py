@@ -35,7 +35,7 @@ def get_layer_bounds(layer):
     return None
 
 
-def extract_layer_image(layer, layer_index, output_dir, base_name):
+def extract_layer_image(layer, layer_index, output_dir, base_name, folder_path=None):
     """
     Extract a single layer and save it as an image.
     
@@ -43,7 +43,8 @@ def extract_layer_image(layer, layer_index, output_dir, base_name):
         layer: The layer to extract
         layer_index: Index of the layer for naming
         output_dir: Directory to save the image
-        base_name: Base name for output files
+        base_name: Base name for output files (not used in new naming scheme)
+        folder_path: List of folder names from root to this layer
         
     Returns:
         dict: Layer information including filename, position, and name, or None if layer is empty
@@ -56,12 +57,18 @@ def extract_layer_image(layer, layer_index, output_dir, base_name):
     
     # Get layer name or use index
     layer_name = layer.name if hasattr(layer, 'name') and layer.name else f"layer_{layer_index}"
-    # Sanitize filename
+    # Sanitize filename component
     safe_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in layer_name)
     safe_name = safe_name.strip().replace(' ', '_')
     
-    # Create filename
-    filename = f"{base_name}_layer_{layer_index:03d}_{safe_name}.png"
+    # Create filename based on folder structure
+    # Format: FolderName--SubFolder--LayerName.png
+    if folder_path:
+        filename_parts = folder_path + [safe_name]
+        filename = "--".join(filename_parts) + ".png"
+    else:
+        filename = f"{safe_name}.png"
+    
     filepath = output_dir / filename
     
     try:
@@ -90,22 +97,52 @@ def extract_layer_image(layer, layer_index, output_dir, base_name):
         return None
 
 
-def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0)):
+def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), folder_path=None):
     """
     Recursively process layers, including nested groups.
     
     Args:
         layer_group: The layer or group to process
-        layer_list: List to append layers to
+        layer_list: List to append tuples of (layer, folder_path)
         parent_offset: Offset from parent groups (x, y)
+        folder_path: List of folder names from root to current position
     """
+    if folder_path is None:
+        folder_path = []
+    
     if hasattr(layer_group, '__iter__'):
         # This is a group, process children
         for layer in layer_group:
-            process_layers_recursive(layer, layer_list, parent_offset)
+            # Check if this is a group with a name (folder)
+            if hasattr(layer, 'name'):
+                layer_name = layer.name
+                # Skip folders/layers starting with #
+                if layer_name.startswith('#'):
+                    continue
+                
+                # Check if it's a group (has children)
+                if hasattr(layer, '__iter__'):
+                    # Sanitize folder name
+                    safe_folder_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in layer_name)
+                    safe_folder_name = safe_folder_name.strip().replace(' ', '_')
+                    # Add folder to path and recurse
+                    new_path = folder_path + [safe_folder_name]
+                    process_layers_recursive(layer, layer_list, parent_offset, new_path)
+                else:
+                    # It's a layer, add it with current folder path
+                    layer_list.append((layer, folder_path[:]))
+            else:
+                # Process without name check
+                process_layers_recursive(layer, layer_list, parent_offset, folder_path)
     else:
         # This is a single layer
-        layer_list.append(layer_group)
+        if hasattr(layer_group, 'name'):
+            layer_name = layer_group.name
+            # Skip layers starting with #
+            if not layer_name.startswith('#'):
+                layer_list.append((layer_group, folder_path[:]))
+        else:
+            layer_list.append((layer_group, folder_path[:]))
 
 
 def create_html_preview(output_dir, yaml_filename, base_name):
@@ -436,8 +473,8 @@ def extract_psb_layers(input_file, output_dir=None):
     layers_info = []
     base_name = input_path.stem
     
-    for idx, layer in enumerate(all_layers):
-        layer_info = extract_layer_image(layer, idx, output_dir, base_name)
+    for idx, (layer, folder_path) in enumerate(all_layers):
+        layer_info = extract_layer_image(layer, idx, output_dir, base_name, folder_path)
         if layer_info:
             layers_info.append(layer_info)
             print(f"Extracted: {layer_info['filename']} at ({layer_info['x']}, {layer_info['y']})")

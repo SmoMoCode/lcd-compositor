@@ -33,8 +33,9 @@ No manual installation needed! The `start.sh` script will automatically:
 ```
 
 This will create a folder named `input_layers/` containing:
-- Individual PNG images for each layer (cropped to content)
+- Individual PNG images for each layer (cropped to content, named based on folder structure)
 - `input.yml` file with layer positions and metadata
+- Folders and layers starting with # are ignored
 
 ### Specify Output Directory
 
@@ -62,12 +63,17 @@ Options:
 
 ```
 input_layers/
-├── input_layer_000_Background.png
-├── input_layer_001_Layer_1.png
-├── input_layer_002_Text_Layer.png
+├── Background.png
+├── Smo--Mo--1.png
+├── Smo--Mo--2.png
 ├── input.yml
 └── input_preview.html
 ```
+
+Filenames are generated based on the folder structure in the PSD file:
+- Folder names are concatenated with layer names using `--` (double minus)
+- Example: A layer "1" inside folders "Smo" > "Mo" becomes `Smo--Mo--1.png`
+- Folders and layers starting with `#` are ignored
 
 ### YAML File Format
 
@@ -83,13 +89,13 @@ source_file: input.psb
 document_width: 1920
 document_height: 1080
 layers:
-  - filename: input_layer_000_Background.png
+  - filename: Background.png
     name: Background
     x: 0
     y: 0
     width: 1920
     height: 1080
-  - filename: input_layer_001_Layer_1.png
+  - filename: UI--Layer_1.png
     name: Layer 1
     x: 100
     y: 150
