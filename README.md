@@ -65,7 +65,8 @@ input_layers/
 ├── input_layer_000_Background.png
 ├── input_layer_001_Layer_1.png
 ├── input_layer_002_Text_Layer.png
-└── input.yml
+├── input.yml
+└── input_preview.html
 ```
 
 ### YAML File Format
@@ -97,6 +98,20 @@ layers:
 ```
 
 The `x` and `y` coordinates indicate where the top-left corner of each layer image should be placed to recreate the original layout.
+
+### HTML Preview Page
+
+An HTML preview page (`input_preview.html`) is automatically generated to visualize the extracted layers. Features include:
+
+- **Interactive Visualization**: View all layers positioned exactly as they appear in the original document
+- **Transparency Support**: Images are displayed with proper transparency handling
+- **Blink Mode**: Toggle to enable/disable random layer blinking at 60Hz for testing visibility
+- **Self-Contained**: The HTML file can be opened directly in a web browser alongside the images and YAML file
+- **No Dependencies**: Works offline without requiring any external libraries or internet connection
+
+To use the preview:
+1. Open `input_preview.html` in any modern web browser
+2. Toggle "Blink Mode" to test layer visibility effects
 
 ## Development
 
