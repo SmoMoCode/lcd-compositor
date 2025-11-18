@@ -97,6 +97,15 @@ def extract_layer_image(layer, layer_index, output_dir, base_name, folder_path=N
         return None
 
 
+def is_group(obj):
+    """Check if an object is a group (iterable container)."""
+    try:
+        iter(obj)
+        return True
+    except TypeError:
+        return False
+
+
 def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), folder_path=None):
     """
     Recursively process layers, including nested groups.
@@ -110,18 +119,19 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
     if folder_path is None:
         folder_path = []
     
-    if hasattr(layer_group, '__iter__'):
+    # Check if this is a group/container (iterable)
+    if is_group(layer_group):
         # This is a group, process children
         for layer in layer_group:
-            # Check if this is a group with a name (folder)
-            if hasattr(layer, 'name'):
-                layer_name = layer.name
-                # Skip folders/layers starting with #
-                if layer_name.startswith('#'):
-                    continue
-                
-                # Check if it's a group (has children)
-                if hasattr(layer, '__iter__'):
+            # Skip layers/folders starting with #
+            if hasattr(layer, 'name') and layer.name.startswith('#'):
+                continue
+            
+            # Check if this child is also a group
+            if is_group(layer):
+                # It's a nested group - add its name to the folder path
+                if hasattr(layer, 'name'):
+                    layer_name = layer.name
                     # Sanitize folder name
                     safe_folder_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in layer_name)
                     safe_folder_name = safe_folder_name.strip().replace(' ', '_')
@@ -129,19 +139,17 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
                     new_path = folder_path + [safe_folder_name]
                     process_layers_recursive(layer, layer_list, parent_offset, new_path)
                 else:
-                    # It's a layer, add it with current folder path
-                    layer_list.append((layer, folder_path[:]))
+                    # Group without name, recurse without changing path
+                    process_layers_recursive(layer, layer_list, parent_offset, folder_path)
             else:
-                # Process without name check
-                process_layers_recursive(layer, layer_list, parent_offset, folder_path)
+                # It's a regular layer, add it with current folder path
+                layer_list.append((layer, folder_path[:]))
     else:
-        # This is a single layer
-        if hasattr(layer_group, 'name'):
-            layer_name = layer_group.name
-            # Skip layers starting with #
-            if not layer_name.startswith('#'):
-                layer_list.append((layer_group, folder_path[:]))
-        else:
+        # This is a single layer (not a group)
+        if hasattr(layer_group, 'name') and not layer_group.name.startswith('#'):
+            layer_list.append((layer_group, folder_path[:]))
+        elif not hasattr(layer_group, 'name'):
+            # Layer without name, add it anyway
             layer_list.append((layer_group, folder_path[:]))
 
 
