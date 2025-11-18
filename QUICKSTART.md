@@ -22,6 +22,7 @@ cd lcd-compositor
 This creates:
 - `input_layers/` folder with all layer images
 - `input_layers/input.yml` with position data
+- `input_layers/input_preview.html` for visual preview
 
 ### Specify custom output folder:
 ```bash
@@ -50,6 +51,12 @@ layers:
 ```
 
 Use the `x` and `y` coordinates to position each layer image to recreate the original layout.
+
+### HTML Preview
+Open `input_preview.html` in your browser to:
+- See all layers positioned correctly with transparency
+- Toggle "Blink Mode" to test layer visibility (randomly shows/hides layers at 60Hz)
+- Works offline - no internet required!
 
 ## Requirements
 

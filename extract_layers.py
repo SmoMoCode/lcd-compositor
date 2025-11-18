@@ -108,6 +108,293 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0)):
         layer_list.append(layer_group)
 
 
+def create_html_preview(output_dir, yaml_filename, base_name):
+    """
+    Create an HTML preview page for visualizing the layers.
+    
+    Args:
+        output_dir: Directory containing the layers and YAML file
+        yaml_filename: Name of the YAML file
+        base_name: Base name for the HTML file
+    """
+    html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Layer Preview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #2b2b2b;
+            color: #ffffff;
+        }
+        
+        #controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #3a3a3a;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            z-index: 1000;
+        }
+        
+        #controls label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        #controls input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        #canvas-container {
+            position: relative;
+            margin-top: 20px;
+            background-color: #1a1a1a;
+            border: 2px solid #4a4a4a;
+        }
+        
+        #canvas-container img {
+            position: absolute;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
+        
+        #info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #3a3a3a;
+            border-radius: 8px;
+        }
+        
+        #info h2 {
+            margin-top: 0;
+        }
+        
+        #info p {
+            margin: 5px 0;
+        }
+        
+        .error {
+            background-color: #5a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Layer Preview</h1>
+    
+    <div id="controls">
+        <label>
+            <input type="checkbox" id="blinkToggle">
+            Blink Mode
+        </label>
+    </div>
+    
+    <div id="canvas-container"></div>
+    
+    <div id="info">
+        <h2>Document Info</h2>
+        <p id="docInfo">Loading...</p>
+        <p id="layerCount">Layers: 0</p>
+    </div>
+    
+    <script>
+        const YAML_FILE = '""" + yaml_filename + """';
+        const BLINK_INTERVAL = 1000 / 60; // 60 Hz
+        
+        let layers = [];
+        let blinkTimer = null;
+        let layerElements = [];
+        
+        // Simple YAML parser for our specific format
+        function parseYAML(yamlText) {
+            const lines = yamlText.split('\\n');
+            const data = {
+                layers: []
+            };
+            let currentLayer = null;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmed = line.trim();
+                
+                if (trimmed === '' || trimmed.startsWith('#')) continue;
+                
+                // Check if this is a list item
+                if (line.match(/^\\s*-\\s+\\w+:/)) {
+                    // Save previous layer if exists
+                    if (currentLayer) {
+                        data.layers.push(currentLayer);
+                    }
+                    // Start new layer
+                    currentLayer = {};
+                    // Parse the first property of the layer
+                    const keyVal = line.match(/^\\s*-\\s+(\\w+):\\s*(.*)$/);
+                    if (keyVal) {
+                        const key = keyVal[1];
+                        const value = keyVal[2].trim();
+                        currentLayer[key] = isNaN(value) ? value : parseInt(value);
+                    }
+                } else {
+                    // Regular key-value pair
+                    const match = line.match(/^(\\s*)(\\w+):\\s*(.*)$/);
+                    if (match) {
+                        const indent = match[1].length;
+                        const key = match[2];
+                        const value = match[3].trim();
+                        
+                        if (indent === 0) {
+                            // Top-level property
+                            if (key !== 'layers') {
+                                data[key] = isNaN(value) ? value : parseInt(value);
+                            }
+                        } else if (currentLayer) {
+                            // Layer property
+                            currentLayer[key] = isNaN(value) ? value : parseInt(value);
+                        }
+                    }
+                }
+            }
+            
+            // Add last layer
+            if (currentLayer) {
+                data.layers.push(currentLayer);
+            }
+            
+            return data;
+        }
+        
+        // Load and parse YAML file
+        async function loadYAML() {
+            try {
+                const response = await fetch(YAML_FILE);
+                if (!response.ok) {
+                    throw new Error(`Failed to load YAML file: ${response.statusText}`);
+                }
+                const yamlText = await response.text();
+                const data = parseYAML(yamlText);
+                return data;
+            } catch (error) {
+                console.error('Error loading YAML:', error);
+                document.getElementById('info').innerHTML = 
+                    '<div class="error"><h2>Error</h2><p>' + error.message + '</p></div>';
+                throw error;
+            }
+        }
+        
+        // Create and position images
+        function createLayers(data) {
+            const container = document.getElementById('canvas-container');
+            const docWidth = data.document_width;
+            const docHeight = data.document_height;
+            
+            // Set container size
+            container.style.width = docWidth + 'px';
+            container.style.height = docHeight + 'px';
+            
+            // Update info
+            document.getElementById('docInfo').textContent = 
+                `Size: ${docWidth} × ${docHeight}px | Source: ${data.source_file}`;
+            document.getElementById('layerCount').textContent = 
+                `Layers: ${data.layers.length}`;
+            
+            // Create image elements for each layer
+            data.layers.forEach((layer, index) => {
+                const img = document.createElement('img');
+                img.src = layer.filename;
+                img.style.left = layer.x + 'px';
+                img.style.top = layer.y + 'px';
+                img.alt = layer.name;
+                img.title = `${layer.name} (${layer.x}, ${layer.y})`;
+                img.dataset.layerIndex = index;
+                
+                container.appendChild(img);
+                layerElements.push(img);
+            });
+            
+            layers = data.layers;
+        }
+        
+        // Toggle blink mode
+        function toggleBlink(enabled) {
+            if (enabled) {
+                startBlink();
+            } else {
+                stopBlink();
+                // Show all layers
+                layerElements.forEach(img => {
+                    img.style.visibility = 'visible';
+                });
+            }
+        }
+        
+        // Start blinking
+        function startBlink() {
+            if (blinkTimer) return;
+            
+            blinkTimer = setInterval(() => {
+                if (layerElements.length === 0) return;
+                
+                // Pick a random layer
+                const randomIndex = Math.floor(Math.random() * layerElements.length);
+                const img = layerElements[randomIndex];
+                
+                // Toggle visibility
+                img.style.visibility = 
+                    img.style.visibility === 'hidden' ? 'visible' : 'hidden';
+            }, BLINK_INTERVAL);
+        }
+        
+        // Stop blinking
+        function stopBlink() {
+            if (blinkTimer) {
+                clearInterval(blinkTimer);
+                blinkTimer = null;
+            }
+        }
+        
+        // Initialize
+        async function init() {
+            try {
+                const data = await loadYAML();
+                createLayers(data);
+                
+                // Set up blink toggle
+                const blinkToggle = document.getElementById('blinkToggle');
+                blinkToggle.addEventListener('change', (e) => {
+                    toggleBlink(e.target.checked);
+                });
+            } catch (error) {
+                console.error('Initialization failed:', error);
+            }
+        }
+        
+        // Start when page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>"""
+    
+    html_path = output_dir / f"{base_name}_preview.html"
+    with open(html_path, 'w') as f:
+        f.write(html_content)
+    
+    return html_path
+
+
 def extract_psb_layers(input_file, output_dir=None):
     """
     Extract all layers from a PSB/PSD file.
@@ -171,6 +458,10 @@ def extract_psb_layers(input_file, output_dir=None):
     
     print(f"\nExtracted {len(layers_info)} layers to: {output_dir}")
     print(f"Layer information saved to: {yaml_path}")
+    
+    # Create HTML preview page
+    html_path = create_html_preview(output_dir, yaml_filename, base_name)
+    print(f"HTML preview page created: {html_path}")
     
     return output_dir, yaml_path
 
