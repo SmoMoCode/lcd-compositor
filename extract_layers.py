@@ -130,7 +130,7 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
         folder_path: List of folder names from root to current position
         toggle_path: Name of the toggle controlling this layer/group (if any)
         widget_info: Tuple of (widget_type, widget_name) if this layer is part of a widget
-        number_widget_info: Tuple of (number_widget_name, digit_index) if this is part of a Number widget
+        number_widget_info: Tuple of (parent_widget_type, parent_widget_name, digit_type, digit_name) if this is part of a Number/String widget
     """
     if folder_path is None:
         folder_path = []
@@ -169,6 +169,16 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
                         
                         # Don't pass down number_widget_info yet - we'll handle digits specially below
                         # Number widget itself doesn't have layers, only its child digits do
+                    # Check if this group is a String [S]
+                    elif layer_name.startswith('[S]'):
+                        # Extract string widget name
+                        name_after_bracket = layer_name[3:].strip()
+                        widget_name = name_after_bracket if name_after_bracket else 'String'
+                        current_widget_info = ('S', widget_name)
+                        layer_name = widget_name
+                        
+                        # String widget is similar to Number widget but for alphanumeric text
+                        # It uses 16-segment digits for its child digits
                     # Check if this group is a digit [D:7] or [D:7p]
                     elif layer_name.startswith('[D:'):
                         # Extract digit type and name
@@ -178,13 +188,14 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
                             name_after_bracket = layer_name[end_bracket+1:].strip()
                             widget_name = name_after_bracket if name_after_bracket else digit_type.replace(':', '_')
                             
-                            # Check if we're inside a Number widget
-                            if widget_info and widget_info[0] == 'N':
-                                # This digit is part of a Number widget
-                                number_widget_name = widget_info[1]
+                            # Check if we're inside a Number or String widget
+                            if widget_info and widget_info[0] in ('N', 'S'):
+                                # This digit is part of a Number or String widget
+                                parent_widget_type = widget_info[0]
+                                parent_widget_name = widget_info[1]
                                 # We need to track which digit position this is
                                 # We'll count digits as we encounter them
-                                current_number_widget_info = (number_widget_name, digit_type, widget_name)
+                                current_number_widget_info = (parent_widget_type, parent_widget_name, digit_type, widget_name)
                             else:
                                 # Standalone digit widget
                                 current_widget_info = (digit_type, widget_name)
@@ -538,6 +549,66 @@ def create_lcd_screen_html(output_dir, yaml_filename):
             '9': [true, true, true, true, false, true, true]    // A,F,B,G,C,D
         };
         
+        // 16-segment character mapping: character -> segments to display
+        // Segment order (layer order from top to bottom in PSD):
+        // 0:a1, 1:a2, 2:f, 3:h, 4:i, 5:j, 6:b, 7:g1, 8:g2, 9:e, 10:k, 11:l, 12:m, 13:c, 14:d1, 15:d2
+        const CHAR_16_SEGMENTS = {
+            // Digits
+            '0': [true, true, true, false, false, false, true, false, false, true, true, false, true, true, true, true],
+            '1': [false, false, false, false, true, false, true, false, false, false, false, false, true, false, false, false],
+            '2': [true, true, false, false, false, false, true, true, true, true, false, false, false, true, true, true],
+            '3': [true, true, false, false, true, false, true, true, true, false, false, false, false, true, true, true],
+            '4': [false, false, true, false, true, false, true, true, true, false, false, false, false, true, false, false],
+            '5': [true, true, true, false, false, false, false, true, true, false, false, false, false, true, true, true],
+            '6': [true, true, true, false, false, false, false, true, true, true, false, false, false, true, true, true],
+            '7': [true, true, false, false, false, false, true, false, false, false, false, false, false, true, false, false],
+            '8': [true, true, true, false, false, false, true, true, true, true, false, false, false, true, true, true],
+            '9': [true, true, true, false, false, false, true, true, true, false, false, false, false, true, true, true],
+            // Letters A-Z
+            'A': [true, true, true, false, false, false, true, true, true, true, false, false, false, true, false, false],
+            'B': [true, true, false, false, true, false, true, false, true, false, false, true, false, true, true, true],
+            'C': [true, true, true, false, false, false, false, false, false, true, false, false, false, false, true, true],
+            'D': [true, true, false, false, true, false, true, false, false, false, false, true, false, true, true, true],
+            'E': [true, true, true, false, false, false, false, true, false, true, false, false, false, false, true, true],
+            'F': [true, true, true, false, false, false, false, true, false, true, false, false, false, false, false, false],
+            'G': [true, true, true, false, false, false, false, false, true, true, false, false, false, true, true, true],
+            'H': [false, false, true, false, false, false, true, true, true, true, false, false, false, true, false, false],
+            'I': [true, true, false, false, true, false, false, false, false, false, false, true, false, false, true, true],
+            'J': [false, false, false, false, false, false, true, false, false, true, false, false, false, true, true, false],
+            'K': [false, false, true, true, false, false, false, true, false, true, false, false, true, false, false, false],
+            'L': [false, false, true, false, false, false, false, false, false, true, false, false, false, false, true, true],
+            'M': [false, false, true, true, false, true, true, false, false, true, false, false, false, true, false, false],
+            'N': [false, false, true, true, false, false, true, false, false, true, false, false, true, true, false, false],
+            'O': [true, true, true, false, false, false, true, false, false, true, false, false, false, true, true, true],
+            'P': [true, true, true, false, false, false, true, true, true, true, false, false, false, false, false, false],
+            'Q': [true, true, true, false, false, false, true, false, false, true, false, false, true, true, true, true],
+            'R': [true, true, true, false, false, false, true, true, true, true, false, false, true, false, false, false],
+            'S': [true, true, true, false, false, false, false, true, true, false, false, false, false, true, true, true],
+            'T': [true, true, false, false, true, false, false, false, false, false, false, true, false, false, false, false],
+            'U': [false, false, true, false, false, false, true, false, false, true, false, false, false, true, true, true],
+            'V': [false, false, true, false, false, false, false, false, false, true, true, false, false, false, false, false],
+            'W': [false, false, true, false, false, false, true, false, false, true, false, false, true, true, false, false],
+            'X': [false, false, false, true, false, true, false, false, false, false, true, false, true, false, false, false],
+            'Y': [false, false, false, true, false, true, false, false, false, false, false, true, false, false, false, false],
+            'Z': [true, true, false, false, false, false, false, false, false, false, true, false, false, false, true, true],
+            // Special characters
+            ' ': [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false],
+            '-': [false, false, false, false, false, false, false, true, true, false, false, false, false, false, false, false],
+            '_': [false, false, false, false, false, false, false, false, false, false, false, false, false, false, true, true],
+            '/': [false, false, false, false, false, false, false, false, false, false, true, false, false, false, false, false],
+            '\\\\': [false, false, false, true, false, false, false, false, false, false, false, false, true, false, false, false],
+            '.': [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false], // Handled separately as decimal point
+            '=': [false, false, false, false, false, false, false, true, true, false, false, false, false, false, true, true],
+            '+': [false, false, false, false, true, false, false, true, true, false, false, true, false, false, false, false],
+            '*': [false, false, false, true, true, true, false, true, true, false, true, true, true, false, false, false],
+            '(': [false, false, false, true, false, false, false, false, false, false, false, false, true, false, false, false],
+            ')': [false, false, false, false, false, true, false, false, false, false, true, false, false, false, false, false],
+            '[': [true, true, true, false, false, false, false, false, false, true, false, false, false, false, true, true],
+            ']': [true, true, false, false, false, false, true, false, false, false, false, false, false, true, true, true],
+            "'": [false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false],
+            '"': [false, false, false, false, false, true, true, false, false, false, false, false, false, false, false, false],
+        };
+        
         // SetToggle function - called from parent window
         window.SetToggle = function(name, value) {
             if (!yamlData || !yamlData.widgets || !yamlData.widgets[name]) {
@@ -558,7 +629,8 @@ def create_lcd_screen_html(output_dir, yaml_filename):
         };
         
         // SetDigit function - called from parent window
-        window.SetDigit = function(name, digit, showDecimal) {
+        // Supports both 7-segment and 16-segment displays
+        window.SetDigit = function(name, character, showDecimal) {
             if (!yamlData || !yamlData.widgets || !yamlData.widgets[name]) {
                 console.warn(`Digit widget "${name}" not found in YAML`);
                 return;
@@ -570,22 +642,35 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                 return;
             }
             
-            // Get the segment states for the digit
-            const digitStr = String(digit);
-            const segments = DIGIT_SEGMENTS[digitStr] || [false, false, false, false, false, false, false];
+            const segments = widget.segments || 7;
+            const charStr = String(character).toUpperCase();
             
-            // Update visibility of segment layers (first 7 layers are segments)
-            for (let i = 0; i < 7 && i < widget.layers.length; i++) {
+            // Get the segment states for the character
+            let segmentStates;
+            if (segments === 16) {
+                // 16-segment display - supports alphanumeric
+                segmentStates = CHAR_16_SEGMENTS[charStr];
+                if (!segmentStates) {
+                    // Default to blank if character not found
+                    segmentStates = new Array(16).fill(false);
+                }
+            } else {
+                // 7-segment display - only digits
+                segmentStates = DIGIT_SEGMENTS[charStr] || [false, false, false, false, false, false, false];
+            }
+            
+            // Update visibility of segment layers
+            for (let i = 0; i < segments && i < widget.layers.length; i++) {
                 const filename = widget.layers[i];
                 const img = layerElements[filename];
                 if (img) {
-                    img.style.display = segments[i] ? 'block' : 'none';
+                    img.style.display = segmentStates[i] ? 'block' : 'none';
                 }
             }
             
-            // Handle decimal point (8th layer if it exists)
-            if (widget.has_decimal && widget.layers.length > 7) {
-                const decimalFilename = widget.layers[7];
+            // Handle decimal point (layer after all segments)
+            if (widget.has_decimal && widget.layers.length > segments) {
+                const decimalFilename = widget.layers[segments];
                 const decimalImg = layerElements[decimalFilename];
                 if (decimalImg) {
                     decimalImg.style.display = showDecimal ? 'block' : 'none';
@@ -752,6 +837,94 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         const decimalImg = layerElements[decimalFilename];
                         if (decimalImg) {
                             decimalImg.style.display = showDecimal ? 'block' : 'none';
+                        }
+                    }
+                }
+            }
+        };
+        
+        // SetString function - called from parent window
+        // Displays alphanumeric text using 16-segment digits
+        window.SetString = function(name, text) {
+            if (!yamlData || !yamlData.widgets || !yamlData.widgets[name]) {
+                console.warn(`String widget "${name}" not found in YAML`);
+                return;
+            }
+            
+            const widget = yamlData.widgets[name];
+            if (widget.type !== 'string') {
+                console.warn(`Widget "${name}" is not a string widget`);
+                return;
+            }
+            
+            if (!widget.digits || widget.digits.length === 0) {
+                console.warn(`String widget "${name}" has no digits`);
+                return;
+            }
+            
+            const digitsInfo = widget.digits.map(d => ({
+                name: d.name,
+                has_decimal: d.has_decimal,
+                layers: d.layers,
+                segments: 16  // String widgets use 16-segment digits
+            }));
+            
+            // Process the text to handle periods that merge with previous digit's decimal point
+            let processedChars = [];
+            const textStr = String(text || '');
+            
+            for (let i = 0; i < textStr.length; i++) {
+                const char = textStr[i];
+                if (char === '.') {
+                    // Check if previous char can have a decimal point
+                    if (processedChars.length > 0 && processedChars[processedChars.length - 1].canHaveDecimal) {
+                        // Merge with previous character
+                        processedChars[processedChars.length - 1].showDecimal = true;
+                    } else {
+                        // Treat as separate character (though 16-segment may not display it well)
+                        processedChars.push({ char: char, showDecimal: false, canHaveDecimal: false });
+                    }
+                } else {
+                    processedChars.push({ char: char, showDecimal: false, canHaveDecimal: true });
+                }
+            }
+            
+            // Display characters across available digits (left-to-right)
+            for (let i = 0; i < digitsInfo.length; i++) {
+                const digitInfo = digitsInfo[i];
+                
+                if (i < processedChars.length) {
+                    const charData = processedChars[i];
+                    const char = charData.char.toUpperCase();
+                    const showDecimal = charData.showDecimal && digitInfo.has_decimal;
+                    
+                    // Get segment states for this character
+                    const segments = CHAR_16_SEGMENTS[char] || new Array(16).fill(false);
+                    
+                    // Update visibility of segment layers (16 segments)
+                    for (let j = 0; j < 16 && j < digitInfo.layers.length; j++) {
+                        const filename = digitInfo.layers[j];
+                        const img = layerElements[filename];
+                        if (img) {
+                            img.style.display = segments[j] ? 'block' : 'none';
+                        }
+                    }
+                    
+                    // Handle decimal point (17th layer if it exists)
+                    if (digitInfo.has_decimal && digitInfo.layers.length > 16) {
+                        const decimalFilename = digitInfo.layers[16];
+                        const decimalImg = layerElements[decimalFilename];
+                        if (decimalImg) {
+                            decimalImg.style.display = showDecimal ? 'block' : 'none';
+                        }
+                    }
+                } else {
+                    // Blank this digit
+                    for (let j = 0; j < digitInfo.layers.length; j++) {
+                        const filename = digitInfo.layers[j];
+                        const img = layerElements[filename];
+                        if (img) {
+                            img.style.display = 'none';
                         }
                     }
                 }
@@ -1090,7 +1263,8 @@ def create_index_html(output_dir, yaml_filename):
                         
                         const header = document.createElement('div');
                         header.className = 'widget-header';
-                        header.textContent = widgetName;
+                        const segments = widget.segments || 7;
+                        header.textContent = `${widgetName} (${segments}-seg)`;
                         widgetDiv.appendChild(header);
                         
                         const controls = document.createElement('div');
@@ -1099,15 +1273,22 @@ def create_index_html(output_dir, yaml_filename):
                         const digitInput = document.createElement('input');
                         digitInput.type = 'text';
                         digitInput.id = `digit-${widgetName}`;
-                        digitInput.value = '0';
+                        digitInput.value = segments === 16 ? 'A' : '0';
                         digitInput.maxLength = 1;
-                        digitInput.placeholder = '0-9';
+                        digitInput.placeholder = segments === 16 ? 'A-Z, 0-9' : '0-9';
                         digitInput.addEventListener('input', (e) => {
-                            const value = e.target.value;
-                            if (value === '' || (value >= '0' && value <= '9')) {
+                            const value = e.target.value.toUpperCase();
+                            // For 7-segment, only allow digits
+                            // For 16-segment, allow alphanumeric and some special chars
+                            const isValid = segments === 16 ? 
+                                (value === '' || /^[A-Z0-9\\s\\-_\\/\\\\=+*()\\[\\]'"]$/.test(value)) :
+                                (value === '' || (value >= '0' && value <= '9'));
+                            
+                            if (isValid) {
+                                e.target.value = value;
                                 const decimalCheckbox = document.getElementById(`digit-decimal-${widgetName}`);
                                 const showDecimal = decimalCheckbox ? decimalCheckbox.checked : false;
-                                setDigit(widgetName, value || '0', showDecimal);
+                                setDigit(widgetName, value || (segments === 16 ? ' ' : '0'), showDecimal);
                             } else {
                                 e.target.value = e.target.value.slice(0, -1);
                             }
@@ -1121,7 +1302,7 @@ def create_index_html(output_dir, yaml_filename):
                             decimalCheckbox.id = `digit-decimal-${widgetName}`;
                             decimalCheckbox.addEventListener('change', (e) => {
                                 const digitInput = document.getElementById(`digit-${widgetName}`);
-                                setDigit(widgetName, digitInput.value || '0', e.target.checked);
+                                setDigit(widgetName, digitInput.value || (segments === 16 ? ' ' : '0'), e.target.checked);
                             });
                             decimalLabel.appendChild(decimalCheckbox);
                             decimalLabel.appendChild(document.createTextNode(' .'));
@@ -1256,6 +1437,33 @@ def create_index_html(output_dir, yaml_filename):
                         
                         widgetDiv.appendChild(controls);
                         container.appendChild(widgetDiv);
+                    } else if (widget.type === 'string') {
+                        const widgetDiv = document.createElement('div');
+                        widgetDiv.className = 'widget';
+                        
+                        const header = document.createElement('div');
+                        header.className = 'widget-header';
+                        const digitCount = widget.digits ? widget.digits.length : 0;
+                        header.textContent = `${widgetName} (${digitCount} chars)`;
+                        widgetDiv.appendChild(header);
+                        
+                        const controls = document.createElement('div');
+                        controls.className = 'widget-controls';
+                        
+                        const stringInput = document.createElement('input');
+                        stringInput.type = 'text';
+                        stringInput.id = `string-value-${widgetName}`;
+                        stringInput.value = '';
+                        stringInput.placeholder = 'Enter text...';
+                        stringInput.maxLength = digitCount;
+                        stringInput.style.width = '150px';
+                        stringInput.addEventListener('input', (e) => {
+                            setString(widgetName, e.target.value);
+                        });
+                        controls.appendChild(stringInput);
+                        
+                        widgetDiv.appendChild(controls);
+                        container.appendChild(widgetDiv);
                     }
                 });
                 
@@ -1288,6 +1496,10 @@ def create_index_html(output_dir, yaml_filename):
                             setRange(widgetName, start, end);
                         } else if (widget.type === 'number') {
                             updateNumberWidget(widgetName);
+                        } else if (widget.type === 'string') {
+                            const stringInput = document.getElementById(`string-value-${widgetName}`);
+                            const text = stringInput ? stringInput.value : '';
+                            setString(widgetName, text);
                         }
                     });
                 }
@@ -1331,6 +1543,13 @@ def create_index_html(output_dir, yaml_filename):
         function setNumberValue(name, value, addLeadingZeros, decimalPlaces) {
             if (lcdWindow && lcdWindow.SetNumberValue) {
                 lcdWindow.SetNumberValue(name, value, addLeadingZeros, decimalPlaces);
+            }
+        }
+        
+        // Set string value in LCD screen
+        function setString(name, text) {
+            if (lcdWindow && lcdWindow.SetString) {
+                lcdWindow.SetString(name, text);
             }
         }
         
@@ -1419,14 +1638,15 @@ def extract_psb_layers(input_file, output_dir=None):
                     }
                 widgets[toggle_name]['layers'].append(layer_info['filename'])
             
-            # Handle Number widget digits
+            # Handle Number/String widget digits
             if number_widget_info:
-                number_widget_name, digit_type, digit_name = number_widget_info
+                parent_widget_type, number_widget_name, digit_type, digit_name = number_widget_info
                 
-                # Initialize Number widget if not exists
+                # Initialize Number or String widget if not exists
                 if number_widget_name not in widgets:
+                    widget_type = 'number' if parent_widget_type == 'N' else 'string'
                     widgets[number_widget_name] = {
-                        'type': 'number',
+                        'type': widget_type,
                         'digits': []
                     }
                     number_widgets_digits[number_widget_name] = []
@@ -1456,9 +1676,17 @@ def extract_psb_layers(input_file, output_dir=None):
                     if widget_type.startswith('D:'):
                         # Digit widget
                         has_decimal = widget_type.endswith('p')
+                        # Extract segment count from digit type (e.g., "D:7" or "D:16")
+                        digit_type_clean = widget_type.rstrip('p')  # Remove 'p' if present
+                        segments = 7  # default
+                        if ':' in digit_type_clean:
+                            try:
+                                segments = int(digit_type_clean.split(':')[1])
+                            except (IndexError, ValueError):
+                                segments = 7
                         widgets[widget_name] = {
                             'type': 'digit',
-                            'segments': 7,
+                            'segments': segments,
                             'has_decimal': has_decimal,
                             'layers': []
                         }
@@ -1477,9 +1705,18 @@ def extract_psb_layers(input_file, output_dir=None):
                                 'digits': []
                             }
                             number_widgets_digits[widget_name] = []
+                    elif widget_type == 'S':
+                        # String widget (similar to Number but for alphanumeric text)
+                        # Create it here if no child digits exist yet
+                        if widget_name not in widgets:
+                            widgets[widget_name] = {
+                                'type': 'string',
+                                'digits': []
+                            }
+                            number_widgets_digits[widget_name] = []
                 
-                # Only add layers for non-Number widgets (Number widgets use their child digits)
-                if widget_type != 'N':
+                # Only add layers for non-Number and non-String widgets (these meta-widgets use their child digits)
+                if widget_type not in ('N', 'S'):
                     widgets[widget_name]['layers'].append(layer_info['filename'])
     
     # Finalize Number widgets: reverse digit layers and add to widgets

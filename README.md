@@ -133,7 +133,7 @@ Folders or layers prefixed with `[T]` create a toggle widget:
 - Example: `[T]StatusLight` creates a checkbox control
 - All child layers are shown/hidden together when toggled
 
-### Digit Widgets `[D:7]` or `[D:7p]`
+### Digit Widgets `[D:7]`, `[D:7p]`, `[D:16]`, or `[D:16p]`
 
 Folders prefixed with `[D:7]` create a 7-segment digit display:
 - `[D:7]Speed` - Standard 7-segment digit (0-9)
@@ -148,6 +148,30 @@ Folders prefixed with `[D:7]` create a 7-segment digit display:
   7. Bottom segment (D)
   8. Decimal point (optional, for `[D:7p]`)
 - Creates a text input (0-9) and optional decimal checkbox in the controls
+
+Folders prefixed with `[D:16]` create a 16-segment alphanumeric display:
+- `[D:16]Display` - 16-segment digit (A-Z, 0-9, and special characters)
+- `[D:16p]Display` - 16-segment digit with decimal point
+- Layers must be in this order (from top to bottom in PSD):
+  1. a1 (top-left of top bar)
+  2. a2 (top-right of top bar)
+  3. f (left upper vertical)
+  4. h (top-left diagonal)
+  5. i (top center vertical)
+  6. j (top-right diagonal)
+  7. b (right upper vertical)
+  8. g1 (middle-left horizontal)
+  9. g2 (middle-right horizontal)
+  10. e (left lower vertical)
+  11. k (bottom-left diagonal)
+  12. l (bottom center vertical)
+  13. m (bottom-right diagonal)
+  14. c (right lower vertical)
+  15. d1 (bottom-left of bottom bar)
+  16. d2 (bottom-right of bottom bar)
+  17. Decimal point (optional, for `[D:16p]`)
+- Supports alphanumeric characters (A-Z, 0-9) and common punctuation
+- Creates a text input and optional decimal checkbox in the controls
 
 ### Number Widgets `[N]`
 
@@ -164,6 +188,18 @@ Folders prefixed with `[N]` create a multi-digit number display (a meta-widget u
   - Digits `[D:7]`, `[D:7p]`, `[D:7]` can display: 123, 12.3, 1.23, 0.1
   - With leading zeros: 123, 012.3, 001.2
   - With decimal places=1: 120.0, 012.3, 001.2
+
+### String Widgets `[S]`
+
+Folders prefixed with `[S]` create a multi-character text display using 16-segment digits:
+- Example: `[S]Message` with child folders `[D:16p]`, `[D:16p]`, `[D:16]`
+- Similar to Number widgets but for alphanumeric text instead of numeric values
+- Uses 16-segment digits for displaying letters, numbers, and symbols
+- Child digit folders should use `[D:16]` or `[D:16p]`
+- Period (`.`) characters in the input text will merge with the preceding digit's decimal point (if available)
+- Controls in index.html:
+  - **Text input**: String field for entering alphanumeric text
+- Example: A String widget with 5 digits can display "HELLO", "12.34", "AB-CD", etc.
 
 ### Range Widgets `[R]`
 
