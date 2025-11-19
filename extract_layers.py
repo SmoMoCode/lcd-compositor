@@ -666,10 +666,31 @@ def create_index_html(output_dir, yaml_filename, base_name):
             createWidgetControls(widgets);
         }
         
-        // Wait for iframe to load before initializing
+        // Wait for both window and iframe to load before initializing
+        let windowLoaded = false;
+        let iframeLoaded = false;
+        
+        function checkAndInit() {
+            if (windowLoaded && iframeLoaded) {
+                init();
+            }
+        }
+        
         window.addEventListener('load', () => {
+            windowLoaded = true;
             const iframe = document.getElementById('lcd-screen');
-            iframe.addEventListener('load', init);
+            if (iframe) {
+                // Check if iframe is already loaded
+                if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+                    iframeLoaded = true;
+                    checkAndInit();
+                } else {
+                    iframe.addEventListener('load', () => {
+                        iframeLoaded = true;
+                        checkAndInit();
+                    });
+                }
+            }
         });
     </script>
 </body>
