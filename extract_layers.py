@@ -334,9 +334,32 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                     if (widgetMatch && line.match(/^\\s{2}\\w+:/)) {
                         const widgetName = widgetMatch[1];
                         currentWidget = widgetName;
-                        data.widgets[widgetName] = { layers: [] };
+                        data.widgets[widgetName] = { type: 'toggle', layers: [] };
+                    } else if (currentWidget && line.match(/^\\s{4}(\\w+):\\s*(.*)$/)) {
+                        // Parse widget properties (type, segments, has_decimal, etc.)
+                        const match = line.match(/^\\s{4}(\\w+):\\s*(.*)$/);
+                        const key = match[1];
+                        let value = stripQuotes(match[2]);
+                        
+                        // Skip if this is the 'layers:' line (it will be followed by array items)
+                        if (key === 'layers' && value === '') {
+                            // Ensure layers array exists
+                            if (!data.widgets[currentWidget].layers) {
+                                data.widgets[currentWidget].layers = [];
+                            }
+                        } else {
+                            // Convert boolean strings
+                            if (value === 'true') value = true;
+                            else if (value === 'false') value = false;
+                            else if (!isNaN(value) && value !== '') value = parseInt(value);
+                            data.widgets[currentWidget][key] = value;
+                        }
                     } else if (currentWidget && line.match(/^\\s+-\\s+(.+)$/)) {
                         const layerFile = stripQuotes(line.match(/^\\s+-\\s+(.+)$/)[1]);
+                        // Ensure layers array exists before pushing
+                        if (!data.widgets[currentWidget].layers) {
+                            data.widgets[currentWidget].layers = [];
+                        }
                         data.widgets[currentWidget].layers.push(layerFile);
                     }
                 }
