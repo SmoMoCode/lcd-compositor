@@ -377,10 +377,10 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                             else if (!isNaN(value) && value !== '') value = parseInt(value);
                             data.widgets[currentWidget][key] = value;
                         }
-                    } else if (currentWidget && line.match(/^\\s{6}-\\s+(.+)$/)) {
-                        // Digit array item (for Number widgets) - starts with '- name:'
-                        if (line.match(/^\\s{6}-\\s+name:/)) {
-                            const nameMatch = line.match(/^\\s{6}-\\s+name:\\s*(.*)$/);
+                    } else if (currentWidget && line.match(/^\\s{4}-\\s+(.+)$/)) {
+                        // Digit array item (for Number widgets) - starts with '    - name:'
+                        if (line.match(/^\\s{4}-\\s+name:/)) {
+                            const nameMatch = line.match(/^\\s{4}-\\s+name:\\s*(.*)$/);
                             if (nameMatch) {
                                 const digitName = stripQuotes(nameMatch[1]);
                                 if (!data.widgets[currentWidget].digits) {
@@ -392,10 +392,17 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                                     layers: []
                                 });
                             }
+                        } else {
+                            // Regular layer file (for non-Number widgets like toggle/digit/range)
+                            const layerFile = stripQuotes(line.match(/^\\s{4}-\\s+(.+)$/)[1]);
+                            if (!data.widgets[currentWidget].layers) {
+                                data.widgets[currentWidget].layers = [];
+                            }
+                            data.widgets[currentWidget].layers.push(layerFile);
                         }
-                    } else if (currentWidget && line.match(/^\\s{8}(\\w+):\\s*(.*)$/)) {
-                        // Digit properties (has_decimal, layers)
-                        const match = line.match(/^\\s{8}(\\w+):\\s*(.*)$/);
+                    } else if (currentWidget && line.match(/^\\s{6}(\\w+):\\s*(.*)$/)) {
+                        // Digit properties (has_decimal, layers) - only for Number widgets
+                        const match = line.match(/^\\s{6}(\\w+):\\s*(.*)$/);
                         const key = match[1];
                         let value = stripQuotes(match[2]);
                         
@@ -413,9 +420,9 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                                 currentDigit[key] = value;
                             }
                         }
-                    } else if (currentWidget && line.match(/^\\s{10}-\\s+(.+)$/)) {
-                        // Layer file in digit's layers array
-                        const layerFile = stripQuotes(line.match(/^\\s{10}-\\s+(.+)$/)[1]);
+                    } else if (currentWidget && line.match(/^\\s{6}-\\s+(.+)$/)) {
+                        // Layer file in digit's layers array (for Number widgets)
+                        const layerFile = stripQuotes(line.match(/^\\s{6}-\\s+(.+)$/)[1]);
                         if (data.widgets[currentWidget].digits && data.widgets[currentWidget].digits.length > 0) {
                             const currentDigit = data.widgets[currentWidget].digits[data.widgets[currentWidget].digits.length - 1];
                             if (!currentDigit.layers) {
@@ -423,14 +430,6 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                             }
                             currentDigit.layers.push(layerFile);
                         }
-                    } else if (currentWidget && line.match(/^\\s{6}-\\s+(.+)$/)) {
-                        // Regular layer file (for non-Number widgets)
-                        const layerFile = stripQuotes(line.match(/^\\s{6}-\\s+(.+)$/)[1]);
-                        // Ensure layers array exists before pushing
-                        if (!data.widgets[currentWidget].layers) {
-                            data.widgets[currentWidget].layers = [];
-                        }
-                        data.widgets[currentWidget].layers.push(layerFile);
                     }
                 }
                 
@@ -980,10 +979,11 @@ def create_index_html(output_dir, yaml_filename):
                             else if (!isNaN(value) && value !== '') value = parseInt(value);
                             data.widgets[currentWidget][key] = value;
                         }
-                    } else if (currentWidget && line.match(/^\\s{6}-\\s+(.+)$/)) {
-                        // Could be digit array item or layer file
-                        if (line.match(/^\\s{6}-\\s+name:/)) {
-                            const nameMatch = line.match(/^\\s{6}-\\s+name:\\s*(.*)$/);
+                    } else if (currentWidget && line.match(/^\\s{4}-\\s+(.+)$/)) {
+                        // Could be digit array item or regular widget layer
+                        if (line.match(/^\\s{4}-\\s+name:/)) {
+                            // Digit array item for Number widgets
+                            const nameMatch = line.match(/^\\s{4}-\\s+name:\\s*(.*)$/);
                             if (nameMatch) {
                                 const digitName = stripQuotes(nameMatch[1]);
                                 if (!data.widgets[currentWidget].digits) {
@@ -996,16 +996,16 @@ def create_index_html(output_dir, yaml_filename):
                                 });
                             }
                         } else {
-                            // Regular layer file
-                            const layerFile = stripQuotes(line.match(/^\\s{6}-\\s+(.+)$/)[1]);
+                            // Regular layer file for non-Number widgets
+                            const layerFile = stripQuotes(line.match(/^\\s{4}-\\s+(.+)$/)[1]);
                             if (!data.widgets[currentWidget].layers) {
                                 data.widgets[currentWidget].layers = [];
                             }
                             data.widgets[currentWidget].layers.push(layerFile);
                         }
-                    } else if (currentWidget && line.match(/^\\s{8}(\\w+):\\s*(.*)$/)) {
-                        // Digit properties
-                        const match = line.match(/^\\s{8}(\\w+):\\s*(.*)$/);
+                    } else if (currentWidget && line.match(/^\\s{6}(\\w+):\\s*(.*)$/)) {
+                        // Digit properties (has_decimal, layers) - only if we have digits
+                        const match = line.match(/^\\s{6}(\\w+):\\s*(.*)$/);
                         const key = match[1];
                         let value = stripQuotes(match[2]);
                         
@@ -1022,9 +1022,9 @@ def create_index_html(output_dir, yaml_filename):
                                 currentDigit[key] = value;
                             }
                         }
-                    } else if (currentWidget && line.match(/^\\s{10}-\\s+(.+)$/)) {
-                        // Layer file in digit's layers array
-                        const layerFile = stripQuotes(line.match(/^\\s{10}-\\s+(.+)$/)[1]);
+                    } else if (currentWidget && line.match(/^\\s{6}-\\s+(.+)$/)) {
+                        // Layer file in digit's layers array (for Number widgets)
+                        const layerFile = stripQuotes(line.match(/^\\s{6}-\\s+(.+)$/)[1]);
                         if (data.widgets[currentWidget].digits && data.widgets[currentWidget].digits.length > 0) {
                             const currentDigit = data.widgets[currentWidget].digits[data.widgets[currentWidget].digits.length - 1];
                             if (!currentDigit.layers) {
