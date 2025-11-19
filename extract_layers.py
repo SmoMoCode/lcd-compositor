@@ -35,7 +35,7 @@ def get_layer_bounds(layer):
     return None
 
 
-def extract_layer_image(layer, layer_index, output_dir, base_name, folder_path=None):
+def extract_layer_image(layer, layer_index, output_dir, base_name, folder_path=None, original_names=None):
     """
     Extract a single layer and save it as an image.
     
@@ -44,10 +44,11 @@ def extract_layer_image(layer, layer_index, output_dir, base_name, folder_path=N
         layer_index: Index of the layer for naming
         output_dir: Directory to save the image
         base_name: Base name for output files (not used in new naming scheme)
-        folder_path: List of folder names from root to this layer
+        folder_path: List of folder names from root to this layer (sanitized)
+        original_names: List of original folder names (with [T] prefix if present)
         
     Returns:
-        dict: Layer information including filename, position, and name, or None if layer is empty
+        dict: Layer information including filename, position, name, and original names, or None if layer is empty
     """
     bounds = get_layer_bounds(layer)
     if not bounds:
@@ -57,8 +58,13 @@ def extract_layer_image(layer, layer_index, output_dir, base_name, folder_path=N
     
     # Get layer name or use index
     layer_name = layer.name if hasattr(layer, 'name') and layer.name else f"layer_{layer_index}"
+    original_layer_name = layer_name
+    
+    # Remove [T] prefix if present for filename
+    clean_layer_name = layer_name[3:] if layer_name.startswith('[T]') else layer_name
+    
     # Sanitize filename component
-    safe_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in layer_name)
+    safe_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in clean_layer_name)
     safe_name = safe_name.strip().replace(' ', '_')
     
     # Create filename based on folder structure
@@ -86,7 +92,9 @@ def extract_layer_image(layer, layer_index, output_dir, base_name, folder_path=N
         
         return {
             'filename': filename,
-            'name': layer_name,
+            'name': clean_layer_name,
+            'original_name': original_layer_name,
+            'original_folder_path': original_names if original_names else [],
             'x': left,
             'y': top,
             'width': width,
@@ -106,18 +114,21 @@ def is_group(obj):
         return False
 
 
-def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), folder_path=None):
+def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), folder_path=None, original_names=None):
     """
     Recursively process layers, including nested groups.
     
     Args:
         layer_group: The layer or group to process
-        layer_list: List to append tuples of (layer, folder_path)
+        layer_list: List to append tuples of (layer, folder_path, original_folder_path)
         parent_offset: Offset from parent groups (x, y)
-        folder_path: List of folder names from root to current position
+        folder_path: List of folder names from root to current position (sanitized)
+        original_names: List of original folder names (with [T] prefix if present)
     """
     if folder_path is None:
         folder_path = []
+    if original_names is None:
+        original_names = []
     
     # Check if this is a group/container (iterable)
     if is_group(layer_group):
@@ -132,30 +143,71 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
                 # It's a nested group - add its name to the folder path
                 if hasattr(layer, 'name'):
                     layer_name = layer.name
+                    # Store original name for toggle detection
+                    original_name = layer_name
+                    # Remove [T] prefix if present
+                    clean_name = layer_name[3:] if layer_name.startswith('[T]') else layer_name
                     # Sanitize folder name
-                    safe_folder_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in layer_name)
+                    safe_folder_name = "".join(c if c.isalnum() or c in (' ', '-', '_', '[', ']') else '_' for c in clean_name)
                     safe_folder_name = safe_folder_name.strip().replace(' ', '_')
                     # Add folder to path and recurse
                     new_path = folder_path + [safe_folder_name]
-                    process_layers_recursive(layer, layer_list, parent_offset, new_path)
+                    new_original_path = original_names + [original_name]
+                    process_layers_recursive(layer, layer_list, parent_offset, new_path, new_original_path)
                 else:
                     # Group without name, recurse without changing path
-                    process_layers_recursive(layer, layer_list, parent_offset, folder_path)
+                    process_layers_recursive(layer, layer_list, parent_offset, folder_path, original_names)
             else:
                 # It's a regular layer, add it with current folder path
-                layer_list.append((layer, folder_path[:]))
+                layer_list.append((layer, folder_path[:], original_names[:]))
     else:
         # This is a single layer (not a group)
         if hasattr(layer_group, 'name') and not layer_group.name.startswith('#'):
-            layer_list.append((layer_group, folder_path[:]))
+            layer_list.append((layer_group, folder_path[:], original_names[:]))
         elif not hasattr(layer_group, 'name'):
             # Layer without name, add it anyway
-            layer_list.append((layer_group, folder_path[:]))
+            layer_list.append((layer_group, folder_path[:], original_names[:]))
 
 
-def create_html_preview(output_dir, yaml_filename, base_name):
+def extract_widgets(layers_info):
     """
-    Create an HTML preview page for visualizing the layers.
+    Extract widget (toggle) information from layers.
+    
+    Args:
+        layers_info: List of layer dictionaries with original names and paths
+        
+    Returns:
+        dict: Dictionary mapping widget names to their associated filenames
+    """
+    widgets = {}
+    
+    for layer in layers_info:
+        original_name = layer.get('original_name', '')
+        original_folder_path = layer.get('original_folder_path', [])
+        filename = layer['filename']
+        
+        # Check if the layer itself has [T] prefix
+        if original_name.startswith('[T]'):
+            widget_name = original_name[3:]  # Remove [T] prefix
+            if widget_name not in widgets:
+                widgets[widget_name] = []
+            widgets[widget_name].append(filename)
+        
+        # Check if any folder in the path has [T] prefix
+        for folder_name in original_folder_path:
+            if folder_name.startswith('[T]'):
+                widget_name = folder_name[3:]  # Remove [T] prefix
+                if widget_name not in widgets:
+                    widgets[widget_name] = []
+                widgets[widget_name].append(filename)
+    
+    return widgets
+
+
+def create_lcd_screen_html(output_dir, yaml_filename, base_name):
+    """
+    Create the LCD screen HTML page for visualizing the layers.
+    This is designed to be embedded in the index.html page.
     
     Args:
         output_dir: Directory containing the layers and YAML file
@@ -167,110 +219,66 @@ def create_html_preview(output_dir, yaml_filename, base_name):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Layer Preview</title>
+    <title>LCD Screen</title>
     <style>
         body {
             margin: 0;
-            padding: 20px;
-            font-family: Arial, sans-serif;
-            background-color: #2b2b2b;
-            color: #ffffff;
-        }
-        
-        #controls {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background-color: #3a3a3a;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            z-index: 1000;
-        }
-        
-        #controls label {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        
-        #controls input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            cursor: pointer;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
         }
         
         #canvas-container {
             position: relative;
-            margin-top: 20px;
-            background-color: #1a1a1a;
-            border: 2px solid #4a4a4a;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
-        #canvas-container img {
+        #canvas-wrapper {
+            position: relative;
+            transform-origin: center center;
+        }
+        
+        #canvas-wrapper img {
             position: absolute;
             image-rendering: -webkit-optimize-contrast;
             image-rendering: crisp-edges;
-        }
-        
-        #info {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #3a3a3a;
-            border-radius: 8px;
-        }
-        
-        #info h2 {
-            margin-top: 0;
-        }
-        
-        #info p {
-            margin: 5px 0;
         }
         
         .error {
             background-color: #5a2a2a;
             padding: 15px;
             border-radius: 8px;
-            margin: 20px 0;
+            margin: 20px;
+            color: #ffffff;
         }
     </style>
 </head>
 <body>
-    <h1>Layer Preview</h1>
-    
-    <div id="controls">
-        <label>
-            <input type="checkbox" id="blinkToggle">
-            Blink Mode
-        </label>
-    </div>
-    
-    <div id="canvas-container"></div>
-    
-    <div id="info">
-        <h2>Document Info</h2>
-        <p id="docInfo">Loading...</p>
-        <p id="layerCount">Layers: 0</p>
+    <div id="canvas-container">
+        <div id="canvas-wrapper"></div>
     </div>
     
     <script>
         const YAML_FILE = '""" + yaml_filename + """';
-        const BLINK_INTERVAL = 1000 / 60; // 60 Hz
         
-        let layers = [];
-        let blinkTimer = null;
-        let layerElements = [];
+        let yamlData = null;
+        let layerElements = {};
+        let toggleStates = {};
         
         // Simple YAML parser for our specific format
         function parseYAML(yamlText) {
             const lines = yamlText.split('\\n');
             const data = {
-                layers: []
+                layers: [],
+                widgets: {}
             };
             let currentLayer = null;
+            let currentWidget = null;
+            let inWidgets = false;
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
@@ -278,43 +286,54 @@ def create_html_preview(output_dir, yaml_filename, base_name):
                 
                 if (trimmed === '' || trimmed.startsWith('#')) continue;
                 
-                // Check if this is a list item
-                if (line.match(/^\\s*-\\s+\\w+:/)) {
-                    // Save previous layer if exists
-                    if (currentLayer) {
-                        data.layers.push(currentLayer);
-                    }
-                    // Start new layer
-                    currentLayer = {};
-                    // Parse the first property of the layer
-                    const keyVal = line.match(/^\\s*-\\s+(\\w+):\\s*(.*)$/);
-                    if (keyVal) {
-                        const key = keyVal[1];
-                        const value = keyVal[2].trim();
-                        currentLayer[key] = isNaN(value) ? value : parseInt(value);
+                // Check for widgets section
+                if (trimmed === 'widgets:') {
+                    inWidgets = true;
+                    continue;
+                }
+                
+                if (inWidgets) {
+                    // Parse widget entries
+                    const widgetMatch = line.match(/^\\s+(\\w+):/);
+                    if (widgetMatch) {
+                        currentWidget = widgetMatch[1];
+                        data.widgets[currentWidget] = [];
+                    } else if (currentWidget && line.match(/^\\s+-\\s+(.+)$/)) {
+                        const filename = line.match(/^\\s+-\\s+(.+)$/)[1].trim();
+                        data.widgets[currentWidget].push(filename);
                     }
                 } else {
-                    // Regular key-value pair
-                    const match = line.match(/^(\\s*)(\\w+):\\s*(.*)$/);
-                    if (match) {
-                        const indent = match[1].length;
-                        const key = match[2];
-                        const value = match[3].trim();
-                        
-                        if (indent === 0) {
-                            // Top-level property
-                            if (key !== 'layers') {
-                                data[key] = isNaN(value) ? value : parseInt(value);
-                            }
-                        } else if (currentLayer) {
-                            // Layer property
+                    // Parse layers
+                    if (line.match(/^\\s*-\\s+\\w+:/)) {
+                        if (currentLayer) {
+                            data.layers.push(currentLayer);
+                        }
+                        currentLayer = {};
+                        const keyVal = line.match(/^\\s*-\\s+(\\w+):\\s*(.*)$/);
+                        if (keyVal) {
+                            const key = keyVal[1];
+                            const value = keyVal[2].trim();
                             currentLayer[key] = isNaN(value) ? value : parseInt(value);
+                        }
+                    } else {
+                        const match = line.match(/^(\\s*)(\\w+):\\s*(.*)$/);
+                        if (match) {
+                            const indent = match[1].length;
+                            const key = match[2];
+                            const value = match[3].trim();
+                            
+                            if (indent === 0) {
+                                if (key !== 'layers' && key !== 'widgets') {
+                                    data[key] = isNaN(value) ? value : parseInt(value);
+                                }
+                            } else if (currentLayer) {
+                                currentLayer[key] = isNaN(value) ? value : parseInt(value);
+                            }
                         }
                     }
                 }
             }
             
-            // Add last layer
             if (currentLayer) {
                 data.layers.push(currentLayer);
             }
@@ -334,7 +353,7 @@ def create_html_preview(output_dir, yaml_filename, base_name):
                 return data;
             } catch (error) {
                 console.error('Error loading YAML:', error);
-                document.getElementById('info').innerHTML = 
+                document.getElementById('canvas-container').innerHTML = 
                     '<div class="error"><h2>Error</h2><p>' + error.message + '</p></div>';
                 throw error;
             }
@@ -342,19 +361,13 @@ def create_html_preview(output_dir, yaml_filename, base_name):
         
         // Create and position images
         function createLayers(data) {
-            const container = document.getElementById('canvas-container');
+            const wrapper = document.getElementById('canvas-wrapper');
             const docWidth = data.document_width;
             const docHeight = data.document_height;
             
-            // Set container size
-            container.style.width = docWidth + 'px';
-            container.style.height = docHeight + 'px';
-            
-            // Update info
-            document.getElementById('docInfo').textContent = 
-                `Size: ${docWidth} × ${docHeight}px | Source: ${data.source_file}`;
-            document.getElementById('layerCount').textContent = 
-                `Layers: ${data.layers.length}`;
+            // Set wrapper size to document size
+            wrapper.style.width = docWidth + 'px';
+            wrapper.style.height = docHeight + 'px';
             
             // Create image elements for each layer
             data.layers.forEach((layer, index) => {
@@ -363,65 +376,71 @@ def create_html_preview(output_dir, yaml_filename, base_name):
                 img.style.left = layer.x + 'px';
                 img.style.top = layer.y + 'px';
                 img.alt = layer.name;
-                img.title = `${layer.name} (${layer.x}, ${layer.y})`;
-                img.dataset.layerIndex = index;
+                img.title = layer.name;
+                img.dataset.filename = layer.filename;
                 
-                container.appendChild(img);
-                layerElements.push(img);
+                wrapper.appendChild(img);
+                layerElements[layer.filename] = img;
             });
             
-            layers = data.layers;
-        }
-        
-        // Toggle blink mode
-        function toggleBlink(enabled) {
-            if (enabled) {
-                startBlink();
-            } else {
-                stopBlink();
-                // Show all layers
-                layerElements.forEach(img => {
-                    img.style.visibility = 'visible';
-                });
-            }
-        }
-        
-        // Start blinking
-        function startBlink() {
-            if (blinkTimer) return;
+            // Initialize all toggles to true (visible)
+            Object.keys(data.widgets || {}).forEach(widgetName => {
+                toggleStates[widgetName] = true;
+            });
             
-            blinkTimer = setInterval(() => {
-                if (layerElements.length === 0) return;
-                
-                // Pick a random layer
-                const randomIndex = Math.floor(Math.random() * layerElements.length);
-                const img = layerElements[randomIndex];
-                
-                // Toggle visibility
-                img.style.visibility = 
-                    img.style.visibility === 'hidden' ? 'visible' : 'hidden';
-            }, BLINK_INTERVAL);
+            // Scale to fit container
+            scaleToFit();
         }
         
-        // Stop blinking
-        function stopBlink() {
-            if (blinkTimer) {
-                clearInterval(blinkTimer);
-                blinkTimer = null;
-            }
+        // Scale the canvas to fit the container
+        function scaleToFit() {
+            const container = document.getElementById('canvas-container');
+            const wrapper = document.getElementById('canvas-wrapper');
+            
+            if (!wrapper.style.width) return;
+            
+            const docWidth = parseInt(wrapper.style.width);
+            const docHeight = parseInt(wrapper.style.height);
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            
+            // Calculate scale to fit
+            const scaleX = containerWidth / docWidth;
+            const scaleY = containerHeight / docHeight;
+            const scale = Math.min(scaleX, scaleY, 1); // Don't scale up
+            
+            wrapper.style.transform = `scale(${scale})`;
         }
+        
+        // Set toggle state for a widget
+        function SetToggle(name, value) {
+            toggleStates[name] = value;
+            
+            if (!yamlData || !yamlData.widgets || !yamlData.widgets[name]) {
+                console.warn(`Toggle '${name}' not found in widgets`);
+                return;
+            }
+            
+            const filenames = yamlData.widgets[name];
+            filenames.forEach(filename => {
+                const img = layerElements[filename];
+                if (img) {
+                    img.style.display = value ? 'block' : 'none';
+                }
+            });
+        }
+        
+        // Make SetToggle available globally
+        window.SetToggle = SetToggle;
         
         // Initialize
         async function init() {
             try {
-                const data = await loadYAML();
-                createLayers(data);
+                yamlData = await loadYAML();
+                createLayers(yamlData);
                 
-                // Set up blink toggle
-                const blinkToggle = document.getElementById('blinkToggle');
-                blinkToggle.addEventListener('change', (e) => {
-                    toggleBlink(e.target.checked);
-                });
+                // Handle resize
+                window.addEventListener('resize', scaleToFit);
             } catch (error) {
                 console.error('Initialization failed:', error);
             }
@@ -433,7 +452,230 @@ def create_html_preview(output_dir, yaml_filename, base_name):
 </body>
 </html>"""
     
-    html_path = output_dir / f"{base_name}_preview.html"
+    html_path = output_dir / "lcd-screen.html"
+    with open(html_path, 'w') as f:
+        f.write(html_content)
+    
+    return html_path
+
+
+def create_index_html(output_dir, yaml_filename, base_name):
+    """
+    Create the index.html page with left panel for toggles and right panel for LCD screen.
+    
+    Args:
+        output_dir: Directory containing the layers and YAML file
+        yaml_filename: Name of the YAML file
+        base_name: Base name for the HTML file
+    """
+    html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LCD Compositor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #2b2b2b;
+            color: #ffffff;
+            overflow: hidden;
+        }
+        
+        #container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #left-panel {
+            width: 300px;
+            background-color: #3a3a3a;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 2px solid #4a4a4a;
+        }
+        
+        #left-panel h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #ffffff;
+        }
+        
+        #widgets {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .widget-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background-color: #2b2b2b;
+            border-radius: 5px;
+        }
+        
+        .widget-item label {
+            flex: 1;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .widget-item input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+        
+        #right-panel {
+            flex: 1;
+            background-color: #1a1a1a;
+            overflow: hidden;
+        }
+        
+        #right-panel iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        
+        .no-widgets {
+            color: #888;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="left-panel">
+            <h1>Widgets</h1>
+            <div id="widgets">
+                <p class="no-widgets">Loading...</p>
+            </div>
+        </div>
+        <div id="right-panel">
+            <iframe id="lcd-screen" src="lcd-screen.html"></iframe>
+        </div>
+    </div>
+    
+    <script>
+        const YAML_FILE = '""" + yaml_filename + """';
+        
+        // Simple YAML parser for widgets section
+        function parseYAML(yamlText) {
+            const lines = yamlText.split('\\n');
+            const widgets = {};
+            let inWidgets = false;
+            let currentWidget = null;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmed = line.trim();
+                
+                if (trimmed === '' || trimmed.startsWith('#')) continue;
+                
+                if (trimmed === 'widgets:') {
+                    inWidgets = true;
+                    continue;
+                }
+                
+                if (inWidgets) {
+                    const widgetMatch = line.match(/^\\s+(\\w+):/);
+                    if (widgetMatch) {
+                        currentWidget = widgetMatch[1];
+                        widgets[currentWidget] = [];
+                    } else if (currentWidget && line.match(/^\\s+-\\s+(.+)$/)) {
+                        const filename = line.match(/^\\s+-\\s+(.+)$/)[1].trim();
+                        widgets[currentWidget].push(filename);
+                    }
+                }
+            }
+            
+            return widgets;
+        }
+        
+        // Load widgets from YAML
+        async function loadWidgets() {
+            try {
+                const response = await fetch(YAML_FILE);
+                if (!response.ok) {
+                    throw new Error(`Failed to load YAML file: ${response.statusText}`);
+                }
+                const yamlText = await response.text();
+                const widgets = parseYAML(yamlText);
+                return widgets;
+            } catch (error) {
+                console.error('Error loading widgets:', error);
+                return {};
+            }
+        }
+        
+        // Create widget controls
+        function createWidgetControls(widgets) {
+            const widgetsContainer = document.getElementById('widgets');
+            widgetsContainer.innerHTML = '';
+            
+            const widgetNames = Object.keys(widgets);
+            
+            if (widgetNames.length === 0) {
+                widgetsContainer.innerHTML = '<p class="no-widgets">No widgets found</p>';
+                return;
+            }
+            
+            widgetNames.forEach(widgetName => {
+                const widgetItem = document.createElement('div');
+                widgetItem.className = 'widget-item';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `widget-${widgetName}`;
+                checkbox.checked = true; // Default to on
+                checkbox.addEventListener('change', (e) => {
+                    toggleWidget(widgetName, e.target.checked);
+                });
+                
+                const label = document.createElement('label');
+                label.htmlFor = `widget-${widgetName}`;
+                label.textContent = widgetName;
+                
+                widgetItem.appendChild(checkbox);
+                widgetItem.appendChild(label);
+                widgetsContainer.appendChild(widgetItem);
+            });
+        }
+        
+        // Toggle widget on/off
+        function toggleWidget(name, value) {
+            const iframe = document.getElementById('lcd-screen');
+            if (iframe && iframe.contentWindow && iframe.contentWindow.SetToggle) {
+                iframe.contentWindow.SetToggle(name, value);
+            }
+        }
+        
+        // Initialize
+        async function init() {
+            const widgets = await loadWidgets();
+            createWidgetControls(widgets);
+        }
+        
+        // Wait for iframe to load before initializing
+        window.addEventListener('load', () => {
+            const iframe = document.getElementById('lcd-screen');
+            iframe.addEventListener('load', init);
+        });
+    </script>
+</body>
+</html>"""
+    
+    html_path = output_dir / "index.html"
     with open(html_path, 'w') as f:
         f.write(html_content)
     
@@ -481,11 +723,14 @@ def extract_psb_layers(input_file, output_dir=None):
     layers_info = []
     base_name = input_path.stem
     
-    for idx, (layer, folder_path) in enumerate(all_layers):
-        layer_info = extract_layer_image(layer, idx, output_dir, base_name, folder_path)
+    for idx, (layer, folder_path, original_names) in enumerate(all_layers):
+        layer_info = extract_layer_image(layer, idx, output_dir, base_name, folder_path, original_names)
         if layer_info:
             layers_info.append(layer_info)
             print(f"Extracted: {layer_info['filename']} at ({layer_info['x']}, {layer_info['y']})")
+    
+    # Extract widget information
+    widgets = extract_widgets(layers_info)
     
     # Create YAML file
     yaml_filename = f"{base_name}.yml"
@@ -495,7 +740,8 @@ def extract_psb_layers(input_file, output_dir=None):
         'source_file': input_path.name,
         'document_width': psd.width,
         'document_height': psd.height,
-        'layers': layers_info
+        'layers': layers_info,
+        'widgets': widgets
     }
     
     with open(yaml_path, 'w') as f:
@@ -503,10 +749,15 @@ def extract_psb_layers(input_file, output_dir=None):
     
     print(f"\nExtracted {len(layers_info)} layers to: {output_dir}")
     print(f"Layer information saved to: {yaml_path}")
+    if widgets:
+        print(f"Found {len(widgets)} widget(s): {', '.join(widgets.keys())}")
     
-    # Create HTML preview page
-    html_path = create_html_preview(output_dir, yaml_filename, base_name)
-    print(f"HTML preview page created: {html_path}")
+    # Create HTML files
+    lcd_screen_path = create_lcd_screen_html(output_dir, yaml_filename, base_name)
+    print(f"LCD screen HTML created: {lcd_screen_path}")
+    
+    index_path = create_index_html(output_dir, yaml_filename, base_name)
+    print(f"Index HTML created: {index_path}")
     
     return output_dir, yaml_path
 
