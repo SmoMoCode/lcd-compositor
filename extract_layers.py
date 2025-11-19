@@ -246,6 +246,16 @@ def create_lcd_screen_html(output_dir, yaml_filename):
         let layerElements = {};
         let toggleStates = {};
         
+        // Helper function to strip quotes from YAML values
+        function stripQuotes(value) {
+            value = value.trim();
+            if ((value.startsWith("'") && value.endsWith("'")) || 
+                (value.startsWith('"') && value.endsWith('"'))) {
+                return value.slice(1, -1);
+            }
+            return value;
+        }
+        
         // Simple YAML parser for our specific format
         function parseYAML(yamlText) {
             const lines = yamlText.split('\\n');
@@ -285,14 +295,14 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                     const keyVal = line.match(/^\\s*-\\s+(\\w+):\\s*(.*)$/);
                     if (keyVal) {
                         const key = keyVal[1];
-                        const value = keyVal[2].trim();
+                        const value = stripQuotes(keyVal[2]);
                         currentLayer[key] = isNaN(value) ? value : parseInt(value);
                     }
                 } else if (inLayersSection && currentLayer) {
                     const match = line.match(/^\\s+(\\w+):\\s*(.*)$/);
                     if (match) {
                         const key = match[1];
-                        const value = match[2].trim();
+                        const value = stripQuotes(match[2]);
                         currentLayer[key] = isNaN(value) ? value : parseInt(value);
                     }
                 }
@@ -305,7 +315,7 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         currentWidget = widgetName;
                         data.widgets[widgetName] = { layers: [] };
                     } else if (currentWidget && line.match(/^\\s+-\\s+(.+)$/)) {
-                        const layerFile = line.match(/^\\s+-\\s+(.+)$/)[1].trim();
+                        const layerFile = stripQuotes(line.match(/^\\s+-\\s+(.+)$/)[1]);
                         data.widgets[currentWidget].layers.push(layerFile);
                     }
                 }
@@ -314,7 +324,7 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                 const topMatch = line.match(/^(\\w+):\\s*(.*)$/);
                 if (topMatch && !inLayersSection && !inWidgetsSection) {
                     const key = topMatch[1];
-                    const value = topMatch[2].trim();
+                    const value = stripQuotes(topMatch[2]);
                     if (key !== 'layers' && key !== 'widgets') {
                         data[key] = isNaN(value) ? value : parseInt(value);
                     }
@@ -550,6 +560,16 @@ def create_index_html(output_dir, yaml_filename):
         const YAML_FILE = '""" + yaml_filename + """';
         let lcdWindow = null;
         
+        // Helper function to strip quotes from YAML values
+        function stripQuotes(value) {
+            value = value.trim();
+            if ((value.startsWith("'") && value.endsWith("'")) || 
+                (value.startsWith('"') && value.endsWith('"'))) {
+                return value.slice(1, -1);
+            }
+            return value;
+        }
+        
         // Simple YAML parser for our specific format
         function parseYAML(yamlText) {
             const lines = yamlText.split('\\n');
@@ -584,7 +604,7 @@ def create_index_html(output_dir, yaml_filename):
                         currentWidget = widgetName;
                         data.widgets[widgetName] = { type: 'toggle', layers: [] };
                     } else if (currentWidget && line.match(/^\\s+-\\s+(.+)$/)) {
-                        const layerFile = line.match(/^\\s+-\\s+(.+)$/)[1].trim();
+                        const layerFile = stripQuotes(line.match(/^\\s+-\\s+(.+)$/)[1]);
                         data.widgets[currentWidget].layers.push(layerFile);
                     }
                 }
