@@ -56,6 +56,28 @@ widgets:
       - Temperature--segment_C.png
       - Temperature--segment_D.png
       - Temperature--decimal.png
+  Display:
+    type: digit
+    segments: 16
+    has_decimal: true
+    layers:
+      - Display--a1.png
+      - Display--a2.png
+      - Display--f.png
+      - Display--h.png
+      - Display--i.png
+      - Display--j.png
+      - Display--b.png
+      - Display--g1.png
+      - Display--g2.png
+      - Display--e.png
+      - Display--k.png
+      - Display--l.png
+      - Display--m.png
+      - Display--c.png
+      - Display--d1.png
+      - Display--d2.png
+      - Display--dp.png
   RPM:
     type: number
     digits:
@@ -90,6 +112,68 @@ widgets:
           - RPM--ones--segment_E.png
           - RPM--ones--segment_C.png
           - RPM--ones--segment_D.png
+  Message:
+    type: string
+    digits:
+      - name: char0
+        has_decimal: true
+        layers:
+          - Message--char0--a1.png
+          - Message--char0--a2.png
+          - Message--char0--f.png
+          - Message--char0--h.png
+          - Message--char0--i.png
+          - Message--char0--j.png
+          - Message--char0--b.png
+          - Message--char0--g1.png
+          - Message--char0--g2.png
+          - Message--char0--e.png
+          - Message--char0--k.png
+          - Message--char0--l.png
+          - Message--char0--m.png
+          - Message--char0--c.png
+          - Message--char0--d1.png
+          - Message--char0--d2.png
+          - Message--char0--dp.png
+      - name: char1
+        has_decimal: false
+        layers:
+          - Message--char1--a1.png
+          - Message--char1--a2.png
+          - Message--char1--f.png
+          - Message--char1--h.png
+          - Message--char1--i.png
+          - Message--char1--j.png
+          - Message--char1--b.png
+          - Message--char1--g1.png
+          - Message--char1--g2.png
+          - Message--char1--e.png
+          - Message--char1--k.png
+          - Message--char1--l.png
+          - Message--char1--m.png
+          - Message--char1--c.png
+          - Message--char1--d1.png
+          - Message--char1--d2.png
+      - name: char2
+        has_decimal: true
+        layers:
+          - Message--char2--a1.png
+          - Message--char2--a2.png
+          - Message--char2--f.png
+          - Message--char2--h.png
+          - Message--char2--i.png
+          - Message--char2--j.png
+          - Message--char2--b.png
+          - Message--char2--g1.png
+          - Message--char2--g2.png
+          - Message--char2--e.png
+          - Message--char2--k.png
+          - Message--char2--l.png
+          - Message--char2--m.png
+          - Message--char2--c.png
+          - Message--char2--d1.png
+          - Message--char2--d2.png
+          - Message--char2--dp.png
   PowerLevel:
     type: range
     layers:
