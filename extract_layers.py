@@ -684,24 +684,28 @@ def create_lcd_screen_html(output_dir, yaml_filename):
             }
             
             // Build the display string
+            // Positions 0 through decimalDigitIndex show integer part
+            // Positions decimalDigitIndex+1 onwards show fractional part
             let displayString = '';
             
-            if (decimalDigitIndex >= 0) {
-                // We have a decimal point
-                // Digits before decimal point
-                const beforeDecimal = integerPart.slice(-decimalDigitIndex - 1) || '';
-                displayString = beforeDecimal.padStart(decimalDigitIndex + 1, ' ');
-                // Digits after decimal point
-                const afterDecimal = decimalPart.slice(0, digitsInfo.length - decimalDigitIndex - 1);
-                displayString += afterDecimal.padEnd(digitsInfo.length - decimalDigitIndex - 1, ' ');
+            if (decimalDigitIndex >= 0 && decimalPart.length > 0) {
+                // We have a decimal point available AND we have fractional digits to show
+                // Integer part: positions 0 to decimalDigitIndex (inclusive)
+                const numIntegerPositions = decimalDigitIndex + 1;
+                let integerDisplay = integerPart.slice(-numIntegerPositions);
+                integerDisplay = integerDisplay.padStart(numIntegerPositions, ' ');
+                
+                // Fractional part: positions after decimalDigitIndex
+                const numFractionalPositions = digitsInfo.length - decimalDigitIndex - 1;
+                let fractionalDisplay = decimalPart.slice(0, numFractionalPositions);
+                fractionalDisplay = fractionalDisplay.padEnd(numFractionalPositions, ' ');
+                
+                displayString = integerDisplay + fractionalDisplay;
             } else {
-                // No decimal point - just integer
+                // No decimal point to show - treat all digits as integer
                 displayString = integerPart.slice(-digitsInfo.length) || '0';
                 displayString = displayString.padStart(digitsInfo.length, ' ');
             }
-            
-            // Ensure we have exactly the right number of characters
-            displayString = displayString.slice(-digitsInfo.length);
             
             // Set each digit
             for (let i = 0; i < digitsInfo.length; i++) {
