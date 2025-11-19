@@ -1096,6 +1096,11 @@ def extract_psb_layers(input_file, output_dir=None):
     
     # Add widgets section if any toggles were found
     if widgets:
+        # Reverse layer order for digit widgets
+        # PSD files store layers bottom-to-top, but users arrange them top-to-bottom in UI
+        for widget_name, widget_data in widgets.items():
+            if widget_data['type'] == 'digit':
+                widget_data['layers'].reverse()
         yaml_data['widgets'] = widgets
     
     with open(yaml_path, 'w') as f:
