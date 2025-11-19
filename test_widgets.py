@@ -35,7 +35,7 @@ def test_digit_widget():
         return False
     
     # All layers should have widget_info with type 'D:7'
-    for i, (layer, folder_path, toggle_name, widget_info) in enumerate(all_layers):
+    for i, (layer, folder_path, toggle_name, widget_info, number_widget_info) in enumerate(all_layers):
         if widget_info is None:
             print(f"✗ Expected layer {i} to have widget_info, got None")
             return False
@@ -81,7 +81,7 @@ def test_digit_widget_with_decimal():
         return False
     
     # All layers should have widget_info with type 'D:7p'
-    for i, (layer, folder_path, toggle_name, widget_info) in enumerate(all_layers):
+    for i, (layer, folder_path, toggle_name, widget_info, number_widget_info) in enumerate(all_layers):
         if widget_info is None:
             print(f"✗ Expected layer {i} to have widget_info, got None")
             return False
@@ -124,7 +124,7 @@ def test_range_widget():
         return False
     
     # All layers should have widget_info with type 'R'
-    for i, (layer, folder_path, toggle_name, widget_info) in enumerate(all_layers):
+    for i, (layer, folder_path, toggle_name, widget_info, number_widget_info) in enumerate(all_layers):
         if widget_info is None:
             print(f"✗ Expected layer {i} to have widget_info, got None")
             return False
@@ -186,7 +186,7 @@ def test_mixed_widgets():
         return False
     
     # Check first layer (background) - no widget
-    layer0, folder_path0, toggle0, widget_info0 = all_layers[0]
+    layer0, folder_path0, toggle0, widget_info0, number_widget_info0 = all_layers[0]
     if layer0.name != "Background":
         print(f"✗ Expected first layer 'Background', got '{layer0.name}'")
         return False
@@ -195,14 +195,14 @@ def test_mixed_widgets():
         return False
     
     # Check second layer (toggle child) - has toggle
-    layer1, folder_path1, toggle1, widget_info1 = all_layers[1]
+    layer1, folder_path1, toggle1, widget_info1, number_widget_info1 = all_layers[1]
     if toggle1 != "MyToggle":
         print(f"✗ Expected toggle 'MyToggle', got '{toggle1}'")
         return False
     
     # Check digit layers (indices 2-8)
     for i in range(2, 9):
-        layer, folder_path, toggle_name, widget_info = all_layers[i]
+        layer, folder_path, toggle_name, widget_info, number_widget_info = all_layers[i]
         if widget_info is None:
             print(f"✗ Expected layer {i} to have widget_info for digit")
             return False
@@ -216,7 +216,7 @@ def test_mixed_widgets():
     
     # Check range layers (indices 9-13)
     for i in range(9, 14):
-        layer, folder_path, toggle_name, widget_info = all_layers[i]
+        layer, folder_path, toggle_name, widget_info, number_widget_info = all_layers[i]
         if widget_info is None:
             print(f"✗ Expected layer {i} to have widget_info for range")
             return False

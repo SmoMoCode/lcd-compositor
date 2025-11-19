@@ -119,17 +119,18 @@ def is_group(obj):
         return False
 
 
-def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), folder_path=None, toggle_path=None, widget_info=None):
+def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), folder_path=None, toggle_path=None, widget_info=None, number_widget_info=None):
     """
     Recursively process layers, including nested groups.
     
     Args:
         layer_group: The layer or group to process
-        layer_list: List to append tuples of (layer, folder_path, toggle_name, widget_type, widget_name)
+        layer_list: List to append tuples of (layer, folder_path, toggle_name, widget_type, widget_name, number_widget_info)
         parent_offset: Offset from parent groups (x, y)
         folder_path: List of folder names from root to current position
         toggle_path: Name of the toggle controlling this layer/group (if any)
         widget_info: Tuple of (widget_type, widget_name) if this layer is part of a widget
+        number_widget_info: Tuple of (number_widget_name, digit_index) if this is part of a Number widget
     """
     if folder_path is None:
         folder_path = []
@@ -151,12 +152,23 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
                     # Check if this group is a toggle [T]
                     current_toggle = toggle_path
                     current_widget_info = widget_info
+                    current_number_widget_info = number_widget_info
                     
                     if layer_name.startswith('[T]'):
                         # Extract toggle name (remove [T] prefix)
                         toggle_name = layer_name[3:]
                         current_toggle = toggle_name
                         layer_name = toggle_name  # Use name without [T] for folder path
+                    # Check if this group is a Number [N]
+                    elif layer_name.startswith('[N]'):
+                        # Extract number widget name
+                        name_after_bracket = layer_name[3:].strip()
+                        widget_name = name_after_bracket if name_after_bracket else 'Number'
+                        current_widget_info = ('N', widget_name)
+                        layer_name = widget_name
+                        
+                        # Don't pass down number_widget_info yet - we'll handle digits specially below
+                        # Number widget itself doesn't have layers, only its child digits do
                     # Check if this group is a digit [D:7] or [D:7p]
                     elif layer_name.startswith('[D:'):
                         # Extract digit type and name
@@ -165,7 +177,17 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
                             digit_type = layer_name[1:end_bracket]  # e.g., "D:7" or "D:7p"
                             name_after_bracket = layer_name[end_bracket+1:].strip()
                             widget_name = name_after_bracket if name_after_bracket else digit_type.replace(':', '_')
-                            current_widget_info = (digit_type, widget_name)
+                            
+                            # Check if we're inside a Number widget
+                            if widget_info and widget_info[0] == 'N':
+                                # This digit is part of a Number widget
+                                number_widget_name = widget_info[1]
+                                # We need to track which digit position this is
+                                # We'll count digits as we encounter them
+                                current_number_widget_info = (number_widget_name, digit_type, widget_name)
+                            else:
+                                # Standalone digit widget
+                                current_widget_info = (digit_type, widget_name)
                             layer_name = widget_name
                     # Check if this group is a range [R]
                     elif layer_name.startswith('[R]'):
@@ -180,22 +202,23 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
                     safe_folder_name = safe_folder_name.strip().replace(' ', '_')
                     # Add folder to path and recurse
                     new_path = folder_path + [safe_folder_name]
-                    process_layers_recursive(layer, layer_list, parent_offset, new_path, current_toggle, current_widget_info)
+                    process_layers_recursive(layer, layer_list, parent_offset, new_path, current_toggle, current_widget_info, current_number_widget_info)
                 else:
                     # Group without name, recurse without changing path
-                    process_layers_recursive(layer, layer_list, parent_offset, folder_path, toggle_path, widget_info)
+                    process_layers_recursive(layer, layer_list, parent_offset, folder_path, toggle_path, widget_info, number_widget_info)
             else:
                 # It's a regular layer
                 current_toggle = toggle_path
                 current_widget_info = widget_info
+                current_number_widget_info = number_widget_info
                 # Check if this layer is a toggle [T]
                 if hasattr(layer, 'name') and layer.name.startswith('[T]'):
                     # Extract toggle name (remove [T] prefix)
                     toggle_name = layer.name[3:]
                     current_toggle = toggle_name
                 
-                # Add it with current folder path, toggle name, and widget info
-                layer_list.append((layer, folder_path[:], current_toggle, current_widget_info))
+                # Add it with current folder path, toggle name, widget info, and number widget info
+                layer_list.append((layer, folder_path[:], current_toggle, current_widget_info, current_number_widget_info))
     else:
         # This is a single layer (not a group)
         if hasattr(layer_group, 'name') and not layer_group.name.startswith('#'):
@@ -203,10 +226,10 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
             if layer_group.name.startswith('[T]'):
                 toggle_name = layer_group.name[3:]
                 current_toggle = toggle_name
-            layer_list.append((layer_group, folder_path[:], current_toggle, widget_info))
+            layer_list.append((layer_group, folder_path[:], current_toggle, widget_info, number_widget_info))
         elif not hasattr(layer_group, 'name'):
             # Layer without name, add it anyway
-            layer_list.append((layer_group, folder_path[:], toggle_path, widget_info))
+            layer_list.append((layer_group, folder_path[:], toggle_path, widget_info, number_widget_info))
 
 
 def create_lcd_screen_html(output_dir, yaml_filename):
@@ -336,16 +359,16 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         currentWidget = widgetName;
                         data.widgets[widgetName] = { type: 'toggle', layers: [] };
                     } else if (currentWidget && line.match(/^\\s{4}(\\w+):\\s*(.*)$/)) {
-                        // Parse widget properties (type, segments, has_decimal, etc.)
+                        // Parse widget properties (type, segments, has_decimal, digits, etc.)
                         const match = line.match(/^\\s{4}(\\w+):\\s*(.*)$/);
                         const key = match[1];
                         let value = stripQuotes(match[2]);
                         
-                        // Skip if this is the 'layers:' line (it will be followed by array items)
-                        if (key === 'layers' && value === '') {
-                            // Ensure layers array exists
-                            if (!data.widgets[currentWidget].layers) {
-                                data.widgets[currentWidget].layers = [];
+                        // Skip if this is the 'layers:' or 'digits:' line (will be followed by array items)
+                        if ((key === 'layers' || key === 'digits') && value === '') {
+                            // Ensure array exists
+                            if (!data.widgets[currentWidget][key]) {
+                                data.widgets[currentWidget][key] = [];
                             }
                         } else {
                             // Convert boolean strings
@@ -354,8 +377,55 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                             else if (!isNaN(value) && value !== '') value = parseInt(value);
                             data.widgets[currentWidget][key] = value;
                         }
-                    } else if (currentWidget && line.match(/^\\s+-\\s+(.+)$/)) {
-                        const layerFile = stripQuotes(line.match(/^\\s+-\\s+(.+)$/)[1]);
+                    } else if (currentWidget && line.match(/^\\s{6}-\\s+(.+)$/)) {
+                        // Digit array item (for Number widgets) - starts with '- name:'
+                        if (line.match(/^\\s{6}-\\s+name:/)) {
+                            const nameMatch = line.match(/^\\s{6}-\\s+name:\\s*(.*)$/);
+                            if (nameMatch) {
+                                const digitName = stripQuotes(nameMatch[1]);
+                                if (!data.widgets[currentWidget].digits) {
+                                    data.widgets[currentWidget].digits = [];
+                                }
+                                data.widgets[currentWidget].digits.push({
+                                    name: digitName,
+                                    has_decimal: false,
+                                    layers: []
+                                });
+                            }
+                        }
+                    } else if (currentWidget && line.match(/^\\s{8}(\\w+):\\s*(.*)$/)) {
+                        // Digit properties (has_decimal, layers)
+                        const match = line.match(/^\\s{8}(\\w+):\\s*(.*)$/);
+                        const key = match[1];
+                        let value = stripQuotes(match[2]);
+                        
+                        if (data.widgets[currentWidget].digits && data.widgets[currentWidget].digits.length > 0) {
+                            const currentDigit = data.widgets[currentWidget].digits[data.widgets[currentWidget].digits.length - 1];
+                            if (key === 'layers' && value === '') {
+                                // layers array will follow
+                                if (!currentDigit.layers) {
+                                    currentDigit.layers = [];
+                                }
+                            } else {
+                                if (value === 'true') value = true;
+                                else if (value === 'false') value = false;
+                                else if (!isNaN(value) && value !== '') value = parseInt(value);
+                                currentDigit[key] = value;
+                            }
+                        }
+                    } else if (currentWidget && line.match(/^\\s{10}-\\s+(.+)$/)) {
+                        // Layer file in digit's layers array
+                        const layerFile = stripQuotes(line.match(/^\\s{10}-\\s+(.+)$/)[1]);
+                        if (data.widgets[currentWidget].digits && data.widgets[currentWidget].digits.length > 0) {
+                            const currentDigit = data.widgets[currentWidget].digits[data.widgets[currentWidget].digits.length - 1];
+                            if (!currentDigit.layers) {
+                                currentDigit.layers = [];
+                            }
+                            currentDigit.layers.push(layerFile);
+                        }
+                    } else if (currentWidget && line.match(/^\\s{6}-\\s+(.+)$/)) {
+                        // Regular layer file (for non-Number widgets)
+                        const layerFile = stripQuotes(line.match(/^\\s{6}-\\s+(.+)$/)[1]);
                         // Ensure layers array exists before pushing
                         if (!data.widgets[currentWidget].layers) {
                             data.widgets[currentWidget].layers = [];
@@ -548,6 +618,139 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                     img.style.display = shouldShow ? 'block' : 'none';
                 }
             });
+        };
+        
+        // SetNumberValue function - called from parent window
+        window.SetNumberValue = function(name, value, addLeadingZeros, decimalPlaces) {
+            if (!yamlData || !yamlData.widgets || !yamlData.widgets[name]) {
+                console.warn(`Number widget "${name}" not found in YAML`);
+                return;
+            }
+            
+            const widget = yamlData.widgets[name];
+            if (widget.type !== 'number') {
+                console.warn(`Widget "${name}" is not a number widget`);
+                return;
+            }
+            
+            if (!widget.digits || widget.digits.length === 0) {
+                console.warn(`Number widget "${name}" has no digits`);
+                return;
+            }
+            
+            // Convert value to number
+            const numValue = parseFloat(value);
+            if (isNaN(numValue)) {
+                console.warn(`Invalid number value: ${value}`);
+                return;
+            }
+            
+            // Find which digits have decimal points
+            const digitsInfo = widget.digits.map(d => ({
+                name: d.name,
+                has_decimal: d.has_decimal,
+                layers: d.layers
+            }));
+            
+            // Determine decimal point position (which digit has the decimal point)
+            let decimalDigitIndex = -1;
+            for (let i = 0; i < digitsInfo.length; i++) {
+                if (digitsInfo[i].has_decimal) {
+                    decimalDigitIndex = i;
+                    break;
+                }
+            }
+            
+            // Format the number based on settings
+            let formattedValue = numValue;
+            
+            // Apply decimalPlaces if specified and we have a decimal point
+            if (decimalPlaces !== undefined && decimalPlaces >= 0 && decimalDigitIndex >= 0) {
+                formattedValue = numValue.toFixed(decimalPlaces);
+            } else {
+                formattedValue = String(numValue);
+            }
+            
+            // Split into integer and decimal parts
+            const parts = formattedValue.split('.');
+            let integerPart = parts[0];
+            let decimalPart = parts[1] || '';
+            
+            // Apply leading zeros if needed
+            if (addLeadingZeros) {
+                const totalDigits = digitsInfo.length;
+                const neededLength = decimalDigitIndex >= 0 ? decimalDigitIndex + 1 : totalDigits;
+                integerPart = integerPart.padStart(neededLength, '0');
+            }
+            
+            // Build the display string
+            let displayString = '';
+            
+            if (decimalDigitIndex >= 0) {
+                // We have a decimal point
+                // Digits before decimal point
+                const beforeDecimal = integerPart.slice(-decimalDigitIndex - 1) || '';
+                displayString = beforeDecimal.padStart(decimalDigitIndex + 1, ' ');
+                // Digits after decimal point
+                const afterDecimal = decimalPart.slice(0, digitsInfo.length - decimalDigitIndex - 1);
+                displayString += afterDecimal.padEnd(digitsInfo.length - decimalDigitIndex - 1, ' ');
+            } else {
+                // No decimal point - just integer
+                displayString = integerPart.slice(-digitsInfo.length) || '0';
+                displayString = displayString.padStart(digitsInfo.length, ' ');
+            }
+            
+            // Ensure we have exactly the right number of characters
+            displayString = displayString.slice(-digitsInfo.length);
+            
+            // Set each digit
+            for (let i = 0; i < digitsInfo.length; i++) {
+                const char = displayString[i];
+                const digitInfo = digitsInfo[i];
+                
+                // Show decimal point only if this digit has it and we're displaying a decimal value
+                const showDecimal = digitInfo.has_decimal && decimalPart.length > 0;
+                
+                if (char === ' ' || char === undefined) {
+                    // Hide this digit (blank)
+                    for (let j = 0; j < 7 && j < digitInfo.layers.length; j++) {
+                        const filename = digitInfo.layers[j];
+                        const img = layerElements[filename];
+                        if (img) {
+                            img.style.display = 'none';
+                        }
+                    }
+                    // Hide decimal if present
+                    if (digitInfo.has_decimal && digitInfo.layers.length > 7) {
+                        const decimalFilename = digitInfo.layers[7];
+                        const decimalImg = layerElements[decimalFilename];
+                        if (decimalImg) {
+                            decimalImg.style.display = 'none';
+                        }
+                    }
+                } else {
+                    // Display the digit
+                    const segments = DIGIT_SEGMENTS[char] || [false, false, false, false, false, false, false];
+                    
+                    // Update visibility of segment layers
+                    for (let j = 0; j < 7 && j < digitInfo.layers.length; j++) {
+                        const filename = digitInfo.layers[j];
+                        const img = layerElements[filename];
+                        if (img) {
+                            img.style.display = segments[j] ? 'block' : 'none';
+                        }
+                    }
+                    
+                    // Handle decimal point
+                    if (digitInfo.has_decimal && digitInfo.layers.length > 7) {
+                        const decimalFilename = digitInfo.layers[7];
+                        const decimalImg = layerElements[decimalFilename];
+                        if (decimalImg) {
+                            decimalImg.style.display = showDecimal ? 'block' : 'none';
+                        }
+                    }
+                }
+            }
         };
         
         // Initialize
@@ -755,16 +958,16 @@ def create_index_html(output_dir, yaml_filename):
                         currentWidget = widgetName;
                         data.widgets[widgetName] = { type: 'toggle', layers: [] };
                     } else if (currentWidget && line.match(/^\\s{4}(\\w+):\\s*(.*)$/)) {
-                        // Parse widget properties (type, segments, has_decimal, etc.)
+                        // Parse widget properties (type, segments, has_decimal, digits, etc.)
                         const match = line.match(/^\\s{4}(\\w+):\\s*(.*)$/);
                         const key = match[1];
                         let value = stripQuotes(match[2]);
                         
-                        // Skip if this is the 'layers:' line (it will be followed by array items)
-                        if (key === 'layers' && value === '') {
-                            // Ensure layers array exists
-                            if (!data.widgets[currentWidget].layers) {
-                                data.widgets[currentWidget].layers = [];
+                        // Skip if this is the 'layers:' or 'digits:' line (will be followed by array items)
+                        if ((key === 'layers' || key === 'digits') && value === '') {
+                            // Ensure array exists
+                            if (!data.widgets[currentWidget][key]) {
+                                data.widgets[currentWidget][key] = [];
                             }
                         } else {
                             // Convert boolean strings
@@ -773,13 +976,58 @@ def create_index_html(output_dir, yaml_filename):
                             else if (!isNaN(value) && value !== '') value = parseInt(value);
                             data.widgets[currentWidget][key] = value;
                         }
-                    } else if (currentWidget && line.match(/^\\s+-\\s+(.+)$/)) {
-                        const layerFile = stripQuotes(line.match(/^\\s+-\\s+(.+)$/)[1]);
-                        // Ensure layers array exists before pushing
-                        if (!data.widgets[currentWidget].layers) {
-                            data.widgets[currentWidget].layers = [];
+                    } else if (currentWidget && line.match(/^\\s{6}-\\s+(.+)$/)) {
+                        // Could be digit array item or layer file
+                        if (line.match(/^\\s{6}-\\s+name:/)) {
+                            const nameMatch = line.match(/^\\s{6}-\\s+name:\\s*(.*)$/);
+                            if (nameMatch) {
+                                const digitName = stripQuotes(nameMatch[1]);
+                                if (!data.widgets[currentWidget].digits) {
+                                    data.widgets[currentWidget].digits = [];
+                                }
+                                data.widgets[currentWidget].digits.push({
+                                    name: digitName,
+                                    has_decimal: false,
+                                    layers: []
+                                });
+                            }
+                        } else {
+                            // Regular layer file
+                            const layerFile = stripQuotes(line.match(/^\\s{6}-\\s+(.+)$/)[1]);
+                            if (!data.widgets[currentWidget].layers) {
+                                data.widgets[currentWidget].layers = [];
+                            }
+                            data.widgets[currentWidget].layers.push(layerFile);
                         }
-                        data.widgets[currentWidget].layers.push(layerFile);
+                    } else if (currentWidget && line.match(/^\\s{8}(\\w+):\\s*(.*)$/)) {
+                        // Digit properties
+                        const match = line.match(/^\\s{8}(\\w+):\\s*(.*)$/);
+                        const key = match[1];
+                        let value = stripQuotes(match[2]);
+                        
+                        if (data.widgets[currentWidget].digits && data.widgets[currentWidget].digits.length > 0) {
+                            const currentDigit = data.widgets[currentWidget].digits[data.widgets[currentWidget].digits.length - 1];
+                            if (key === 'layers' && value === '') {
+                                if (!currentDigit.layers) {
+                                    currentDigit.layers = [];
+                                }
+                            } else {
+                                if (value === 'true') value = true;
+                                else if (value === 'false') value = false;
+                                else if (!isNaN(value) && value !== '') value = parseInt(value);
+                                currentDigit[key] = value;
+                            }
+                        }
+                    } else if (currentWidget && line.match(/^\\s{10}-\\s+(.+)$/)) {
+                        // Layer file in digit's layers array
+                        const layerFile = stripQuotes(line.match(/^\\s{10}-\\s+(.+)$/)[1]);
+                        if (data.widgets[currentWidget].digits && data.widgets[currentWidget].digits.length > 0) {
+                            const currentDigit = data.widgets[currentWidget].digits[data.widgets[currentWidget].digits.length - 1];
+                            if (!currentDigit.layers) {
+                                currentDigit.layers = [];
+                            }
+                            currentDigit.layers.push(layerFile);
+                        }
                     }
                 }
             }
@@ -923,6 +1171,85 @@ def create_index_html(output_dir, yaml_filename):
                         
                         widgetDiv.appendChild(controls);
                         container.appendChild(widgetDiv);
+                    } else if (widget.type === 'number') {
+                        const widgetDiv = document.createElement('div');
+                        widgetDiv.className = 'widget';
+                        
+                        const header = document.createElement('div');
+                        header.className = 'widget-header';
+                        const digitCount = widget.digits ? widget.digits.length : 0;
+                        header.textContent = `${widgetName} (${digitCount} digits)`;
+                        widgetDiv.appendChild(header);
+                        
+                        const controls = document.createElement('div');
+                        controls.className = 'widget-controls';
+                        controls.style.flexDirection = 'column';
+                        controls.style.gap = '8px';
+                        
+                        // Value input row
+                        const valueRow = document.createElement('div');
+                        valueRow.style.display = 'flex';
+                        valueRow.style.alignItems = 'center';
+                        valueRow.style.gap = '5px';
+                        
+                        const valueLabel = document.createElement('span');
+                        valueLabel.textContent = 'Value:';
+                        valueRow.appendChild(valueLabel);
+                        
+                        const valueInput = document.createElement('input');
+                        valueInput.type = 'number';
+                        valueInput.id = `number-value-${widgetName}`;
+                        valueInput.value = '0';
+                        valueInput.step = '0.1';
+                        valueInput.style.width = '100px';
+                        valueInput.addEventListener('input', (e) => {
+                            updateNumberWidget(widgetName);
+                        });
+                        valueRow.appendChild(valueInput);
+                        controls.appendChild(valueRow);
+                        
+                        // Leading zeros row
+                        const zerosRow = document.createElement('div');
+                        zerosRow.style.display = 'flex';
+                        zerosRow.style.alignItems = 'center';
+                        
+                        const zerosLabel = document.createElement('label');
+                        const zerosCheckbox = document.createElement('input');
+                        zerosCheckbox.type = 'checkbox';
+                        zerosCheckbox.id = `number-zeros-${widgetName}`;
+                        zerosCheckbox.addEventListener('change', (e) => {
+                            updateNumberWidget(widgetName);
+                        });
+                        zerosLabel.appendChild(zerosCheckbox);
+                        zerosLabel.appendChild(document.createTextNode(' Leading zeros'));
+                        zerosRow.appendChild(zerosLabel);
+                        controls.appendChild(zerosRow);
+                        
+                        // Decimal places row
+                        const decimalRow = document.createElement('div');
+                        decimalRow.style.display = 'flex';
+                        decimalRow.style.alignItems = 'center';
+                        decimalRow.style.gap = '5px';
+                        
+                        const decimalLabel = document.createElement('span');
+                        decimalLabel.textContent = 'Decimal places:';
+                        decimalRow.appendChild(decimalLabel);
+                        
+                        const decimalInput = document.createElement('input');
+                        decimalInput.type = 'number';
+                        decimalInput.id = `number-decimal-${widgetName}`;
+                        decimalInput.value = '0';
+                        decimalInput.min = '0';
+                        decimalInput.max = '9';
+                        decimalInput.style.width = '50px';
+                        decimalInput.addEventListener('input', (e) => {
+                            updateNumberWidget(widgetName);
+                        });
+                        decimalRow.appendChild(decimalInput);
+                        controls.appendChild(decimalRow);
+                        
+                        widgetDiv.appendChild(controls);
+                        container.appendChild(widgetDiv);
                     }
                 });
                 
@@ -953,6 +1280,8 @@ def create_index_html(output_dir, yaml_filename):
                             const start = startInput ? parseInt(startInput.value) : 0;
                             const end = endInput ? parseInt(endInput.value) : 0;
                             setRange(widgetName, start, end);
+                        } else if (widget.type === 'number') {
+                            updateNumberWidget(widgetName);
                         }
                     });
                 }
@@ -989,6 +1318,27 @@ def create_index_html(output_dir, yaml_filename):
         function setRange(name, start, end) {
             if (lcdWindow && lcdWindow.SetRange) {
                 lcdWindow.SetRange(name, start, end);
+            }
+        }
+        
+        // Set number value in LCD screen
+        function setNumberValue(name, value, addLeadingZeros, decimalPlaces) {
+            if (lcdWindow && lcdWindow.SetNumberValue) {
+                lcdWindow.SetNumberValue(name, value, addLeadingZeros, decimalPlaces);
+            }
+        }
+        
+        // Update number widget with current control values
+        function updateNumberWidget(name) {
+            const valueInput = document.getElementById(`number-value-${name}`);
+            const zerosCheckbox = document.getElementById(`number-zeros-${name}`);
+            const decimalInput = document.getElementById(`number-decimal-${name}`);
+            
+            if (valueInput) {
+                const value = parseFloat(valueInput.value) || 0;
+                const addLeadingZeros = zerosCheckbox ? zerosCheckbox.checked : false;
+                const decimalPlaces = decimalInput ? parseInt(decimalInput.value) || 0 : 0;
+                setNumberValue(name, value, addLeadingZeros, decimalPlaces);
             }
         }
         
@@ -1044,10 +1394,11 @@ def extract_psb_layers(input_file, output_dir=None):
     
     # Extract each layer and collect widget information
     layers_info = []
-    widgets = {}  # Dictionary to store toggle, digit, and range information
+    widgets = {}  # Dictionary to store toggle, digit, range, and number information
     base_name = input_path.stem
+    number_widgets_digits = {}  # Track digits for Number widgets: {number_widget_name: [digit_info_list]}
     
-    for idx, (layer, folder_path, toggle_name, widget_info) in enumerate(all_layers):
+    for idx, (layer, folder_path, toggle_name, widget_info, number_widget_info) in enumerate(all_layers):
         layer_info = extract_layer_image(layer, idx, output_dir, base_name, folder_path, toggle_name)
         if layer_info:
             layers_info.append(layer_info)
@@ -1062,8 +1413,38 @@ def extract_psb_layers(input_file, output_dir=None):
                     }
                 widgets[toggle_name]['layers'].append(layer_info['filename'])
             
-            # Collect digit and range widget information
-            if widget_info:
+            # Handle Number widget digits
+            if number_widget_info:
+                number_widget_name, digit_type, digit_name = number_widget_info
+                
+                # Initialize Number widget if not exists
+                if number_widget_name not in widgets:
+                    widgets[number_widget_name] = {
+                        'type': 'number',
+                        'digits': []
+                    }
+                    number_widgets_digits[number_widget_name] = []
+                
+                # Check if this digit is already tracked
+                digit_found = False
+                for digit_info in number_widgets_digits[number_widget_name]:
+                    if digit_info['name'] == digit_name:
+                        # Add layer to existing digit
+                        digit_info['layers'].append(layer_info['filename'])
+                        digit_found = True
+                        break
+                
+                if not digit_found:
+                    # New digit for this Number widget
+                    has_decimal = digit_type.endswith('p')
+                    digit_info = {
+                        'name': digit_name,
+                        'has_decimal': has_decimal,
+                        'layers': [layer_info['filename']]
+                    }
+                    number_widgets_digits[number_widget_name].append(digit_info)
+            # Collect digit and range widget information (standalone widgets, not part of Number)
+            elif widget_info:
                 widget_type, widget_name = widget_info
                 if widget_name not in widgets:
                     if widget_type.startswith('D:'):
@@ -1081,7 +1462,27 @@ def extract_psb_layers(input_file, output_dir=None):
                             'type': 'range',
                             'layers': []
                         }
-                widgets[widget_name]['layers'].append(layer_info['filename'])
+                    elif widget_type == 'N':
+                        # Number widget (initialized above when we see child digits)
+                        # Create it here if no child digits exist yet
+                        if widget_name not in widgets:
+                            widgets[widget_name] = {
+                                'type': 'number',
+                                'digits': []
+                            }
+                            number_widgets_digits[widget_name] = []
+                
+                # Only add layers for non-Number widgets (Number widgets use their child digits)
+                if widget_type != 'N':
+                    widgets[widget_name]['layers'].append(layer_info['filename'])
+    
+    # Finalize Number widgets: reverse digit layers and add to widgets
+    for number_widget_name, digit_list in number_widgets_digits.items():
+        # Reverse each digit's layers (PSD stores bottom-to-top)
+        for digit_info in digit_list:
+            digit_info['layers'].reverse()
+        # Store the digits in the widget
+        widgets[number_widget_name]['digits'] = digit_list
     
     # Create YAML file
     yaml_filename = f"{base_name}.yml"
