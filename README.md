@@ -114,7 +114,7 @@ Two HTML files are automatically generated for interactive visualization:
 1. **`index.html`** - Main interface with:
    - **Controls Panel**: Interactive widgets to control layer visibility and state
    - **LCD Screen**: Real-time preview of the composed layers
-   - **Widget Support**: Toggle, Digit (7-segment), and Range widgets
+   - **Widget Support**: Toggle, Digit (7-segment), Number, and Range widgets
 
 2. **`lcd-screen.html`** - Embedded LCD screen display (loaded by index.html)
 
@@ -148,6 +148,22 @@ Folders prefixed with `[D:7]` create a 7-segment digit display:
   7. Bottom segment (D)
   8. Decimal point (optional, for `[D:7p]`)
 - Creates a text input (0-9) and optional decimal checkbox in the controls
+
+### Number Widgets `[N]`
+
+Folders prefixed with `[N]` create a multi-digit number display (a meta-widget using digit widgets):
+- Example: `[N]Speed` with child folders `[D:7]`, `[D:7p]`, `[D:7]`
+- Child digit folders can have optional names: `[D:7]hundreds`, `[D:7p]tens`, `[D:7]ones`
+- Displays floating-point numbers across multiple digits
+- Automatically handles decimal point placement based on which digit has `[D:7p]`
+- Controls in index.html:
+  - **Value**: Number input for the value to display
+  - **Leading zeros**: Checkbox to pad with zeros (e.g., 12.3 → 012.3)
+  - **Decimal places**: Number of digits to show after decimal point (e.g., 12 → 12.0 with 1 decimal place)
+- Example configurations:
+  - Digits `[D:7]`, `[D:7p]`, `[D:7]` can display: 123, 12.3, 1.23, 0.1
+  - With leading zeros: 123, 012.3, 001.2
+  - With decimal places=1: 120.0, 012.3, 001.2
 
 ### Range Widgets `[R]`
 
