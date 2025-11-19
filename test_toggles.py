@@ -35,7 +35,7 @@ def test_toggle_layer():
         return False
     
     # First layer should have no toggle
-    layer1, folder_path1, toggle1 = all_layers[0]
+    layer1, folder_path1, toggle1, widget_info1 = all_layers[0]
     if layer1.name != "Background":
         print(f"✗ Expected first layer name 'Background', got '{layer1.name}'")
         return False
@@ -44,7 +44,7 @@ def test_toggle_layer():
         return False
     
     # Second layer should have toggle name "MyToggle"
-    layer2, folder_path2, toggle2 = all_layers[1]
+    layer2, folder_path2, toggle2, widget_info2 = all_layers[1]
     if layer2.name != "[T]MyToggle":
         print(f"✗ Expected second layer name '[T]MyToggle', got '{layer2.name}'")
         return False
@@ -87,14 +87,14 @@ def test_toggle_folder():
         return False
     
     # First layer should have no toggle
-    layer1, folder_path1, toggle1 = all_layers[0]
+    layer1, folder_path1, toggle1, widget_info1 = all_layers[0]
     if toggle1 is not None:
         print(f"✗ Expected first layer to have no toggle, got '{toggle1}'")
         return False
     
     # Both children should have the same toggle
     for i in [1, 2]:
-        layer, folder_path, toggle_name = all_layers[i]
+        layer, folder_path, toggle_name, widget_info = all_layers[i]
         if toggle_name != "GroupToggle":
             print(f"✗ Expected layer {i} toggle 'GroupToggle', got '{toggle_name}'")
             return False
@@ -141,7 +141,7 @@ def test_nested_toggle():
         return False
     
     # First layer should have toggle
-    layer1, folder_path1, toggle1 = all_layers[0]
+    layer1, folder_path1, toggle1, widget_info1 = all_layers[0]
     if toggle1 != "NestedToggle":
         print(f"✗ Expected first layer toggle 'NestedToggle', got '{toggle1}'")
         return False
@@ -150,7 +150,7 @@ def test_nested_toggle():
         return False
     
     # Second layer should not have toggle
-    layer2, folder_path2, toggle2 = all_layers[1]
+    layer2, folder_path2, toggle2, widget_info2 = all_layers[1]
     if toggle2 is not None:
         print(f"✗ Expected second layer to have no toggle, got '{toggle2}'")
         return False

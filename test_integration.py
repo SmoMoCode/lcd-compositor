@@ -106,7 +106,7 @@ def test_process_layers_recursive():
             print(f"  - '{layer.name}' with path {folder_path}")
         return False
     
-    for i, (layer, folder_path, toggle_name) in enumerate(all_layers):
+    for i, (layer, folder_path, toggle_name, widget_info) in enumerate(all_layers):
         expected_name, expected_path = expected_results[i]
         
         if layer.name != expected_name:
