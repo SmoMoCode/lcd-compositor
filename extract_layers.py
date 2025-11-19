@@ -661,19 +661,21 @@ def create_lcd_screen_html(output_dir, yaml_filename):
             }
             
             // Format the number based on settings
-            let formattedValue = numValue;
-            
-            // Apply decimalPlaces if specified and we have a decimal point
-            if (decimalPlaces !== undefined && decimalPlaces >= 0 && decimalDigitIndex >= 0) {
-                formattedValue = numValue.toFixed(decimalPlaces);
-            } else {
-                formattedValue = String(numValue);
-            }
+            // Convert to string to get actual decimal places
+            let formattedValue = String(numValue);
             
             // Split into integer and decimal parts
             const parts = formattedValue.split('.');
             let integerPart = parts[0];
             let decimalPart = parts[1] || '';
+            
+            // Apply decimalPlaces as MINIMUM decimal places (pad with zeros if needed)
+            if (decimalPlaces !== undefined && decimalPlaces >= 0 && decimalDigitIndex >= 0) {
+                // Ensure we have at least decimalPlaces decimal digits
+                if (decimalPart.length < decimalPlaces) {
+                    decimalPart = decimalPart.padEnd(decimalPlaces, '0');
+                }
+            }
             
             // Apply leading zeros if needed
             if (addLeadingZeros) {

@@ -26,19 +26,20 @@ def format_number_for_digits(value, digits_info, add_leading_zeros, decimal_plac
             decimal_digit_index = i
             break
     
-    # Format the number
-    if decimal_places is not None and decimal_places >= 0 and decimal_digit_index >= 0:
-        formatted_value = f"{num_value:.{decimal_places}f}"
-    else:
-        # Match JavaScript String() behavior which drops .0 for integers
-        formatted_value = str(num_value)
-        if formatted_value.endswith('.0'):
-            formatted_value = formatted_value[:-2]
+    # Format the number - convert to string to get actual decimal places
+    formatted_value = str(num_value)
+    if formatted_value.endswith('.0'):
+        formatted_value = formatted_value[:-2]
     
     # Split into parts
     parts = formatted_value.split('.')
     integer_part = parts[0]
     decimal_part = parts[1] if len(parts) > 1 else ''
+    
+    # Apply decimal_places as MINIMUM decimal places (pad with zeros if needed)
+    if decimal_places is not None and decimal_places >= 0 and decimal_digit_index >= 0:
+        if len(decimal_part) < decimal_places:
+            decimal_part = decimal_part.ljust(decimal_places, '0')
     
     # Apply leading zeros
     if add_leading_zeros:
@@ -212,6 +213,53 @@ def test_no_decimal_point():
     return True
 
 
+def test_minimum_decimal_places():
+    """Test that decimalPlaces acts as a minimum."""
+    print("\nTesting minimum decimal places behavior...")
+    
+    # 3 digits: [D:7], [D:7p], [D:7] (decimal on middle)
+    digits_info = [
+        {'has_decimal': False},
+        {'has_decimal': True},
+        {'has_decimal': False}
+    ]
+    
+    # Test 1: decimalPlaces=0, value=1.2 -> should show "1.2" (actual decimals shown)
+    result = format_number_for_digits(1.2, digits_info, False, 0)
+    expected = [(' ', False), ('1', True), ('2', False)]
+    if result != expected:
+        print(f"✗ 1.2 with decimalPlaces=0: expected {expected}, got {result}")
+        return False
+    print(f"✓ 1.2 with decimalPlaces=0 → {result} (shows actual decimals)")
+    
+    # Test 2: decimalPlaces=0, value=5 -> should show "5" (no padding)
+    result = format_number_for_digits(5, digits_info, False, 0)
+    expected = [(' ', False), (' ', False), ('5', False)]
+    if result != expected:
+        print(f"✗ 5 with decimalPlaces=0: expected {expected}, got {result}")
+        return False
+    print(f"✓ 5 with decimalPlaces=0 → {result} (no padding)")
+    
+    # Test 3: decimalPlaces=1, value=5 -> should show "5.0" (pad to minimum 1)
+    result = format_number_for_digits(5, digits_info, False, 1)
+    expected = [(' ', False), ('5', True), ('0', False)]
+    if result != expected:
+        print(f"✗ 5 with decimalPlaces=1: expected {expected}, got {result}")
+        return False
+    print(f"✓ 5 with decimalPlaces=1 → {result} (padded to minimum)")
+    
+    # Test 4: decimalPlaces=1, value=5.23 -> should show "5.2" (truncate to fit)
+    result = format_number_for_digits(5.23, digits_info, False, 1)
+    expected = [(' ', False), ('5', True), ('2', False)]
+    if result != expected:
+        print(f"✗ 5.23 with decimalPlaces=1: expected {expected}, got {result}")
+        return False
+    print(f"✓ 5.23 with decimalPlaces=1 → {result} (shows more than minimum, truncated to fit)")
+    
+    print("✓ Minimum decimal places behavior correct")
+    return True
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -227,6 +275,9 @@ def main():
         all_passed = False
     
     if not test_no_decimal_point():
+        all_passed = False
+    
+    if not test_minimum_decimal_places():
         all_passed = False
     
     print("\n" + "=" * 60)
