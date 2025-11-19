@@ -106,7 +106,7 @@ def test_process_layers_recursive():
             print(f"  - '{layer.name}' with path {folder_path}")
         return False
     
-    for i, (layer, folder_path) in enumerate(all_layers):
+    for i, (layer, folder_path, toggle_name) in enumerate(all_layers):
         expected_name, expected_path = expected_results[i]
         
         if layer.name != expected_name:
@@ -125,7 +125,8 @@ def test_process_layers_recursive():
         else:
             expected_filename = f"{safe_name}.png"
         
-        print(f"  ✓ Layer '{layer.name}' -> {expected_filename}")
+        toggle_str = f" (toggle: {toggle_name})" if toggle_name else ""
+        print(f"  ✓ Layer '{layer.name}' -> {expected_filename}{toggle_str}")
     
     print("\n✓ All layers processed correctly with proper folder paths!")
     return True
