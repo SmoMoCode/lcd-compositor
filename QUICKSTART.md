@@ -32,22 +32,28 @@ This creates:
 ## What You Get
 
 ### Layer Images
-Each layer is saved as a PNG file, cropped to its content:
-- `input_layer_000_Background.png`
-- `input_layer_001_Layer_Name.png`
-- `input_layer_002_Another_Layer.png`
-- etc.
+Each layer is saved as a PNG file, cropped to its content. Filenames are based on the folder structure:
+- `Background.png` (layer at root)
+- `Folder--Layer_Name.png` (layer inside "Folder")
+- `Smo--Mo--1.png` (layer "1" inside "Smo" > "Mo")
+- Folders and layers starting with `#` are ignored
 
 ### YAML Metadata
 The `.yml` file contains position data:
 ```yaml
 layers:
-  - filename: input_layer_000_Background.png
+  - filename: Background.png
     name: Background
     x: 0      # X position (left)
     y: 0      # Y position (top)
     width: 1920
     height: 1080
+  - filename: UI--Logo.png
+    name: Logo
+    x: 100
+    y: 150
+    width: 500
+    height: 300
 ```
 
 Use the `x` and `y` coordinates to position each layer image to recreate the original layout.
