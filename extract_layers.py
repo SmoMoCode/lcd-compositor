@@ -119,16 +119,17 @@ def is_group(obj):
         return False
 
 
-def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), folder_path=None, toggle_path=None):
+def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), folder_path=None, toggle_path=None, widget_info=None):
     """
     Recursively process layers, including nested groups.
     
     Args:
         layer_group: The layer or group to process
-        layer_list: List to append tuples of (layer, folder_path, toggle_name)
+        layer_list: List to append tuples of (layer, folder_path, toggle_name, widget_type, widget_name)
         parent_offset: Offset from parent groups (x, y)
         folder_path: List of folder names from root to current position
         toggle_path: Name of the toggle controlling this layer/group (if any)
+        widget_info: Tuple of (widget_type, widget_name) if this layer is part of a widget
     """
     if folder_path is None:
         folder_path = []
@@ -149,32 +150,52 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
                     
                     # Check if this group is a toggle [T]
                     current_toggle = toggle_path
+                    current_widget_info = widget_info
+                    
                     if layer_name.startswith('[T]'):
                         # Extract toggle name (remove [T] prefix)
                         toggle_name = layer_name[3:]
                         current_toggle = toggle_name
                         layer_name = toggle_name  # Use name without [T] for folder path
+                    # Check if this group is a digit [D:7] or [D:7p]
+                    elif layer_name.startswith('[D:'):
+                        # Extract digit type and name
+                        end_bracket = layer_name.find(']')
+                        if end_bracket > 0:
+                            digit_type = layer_name[1:end_bracket]  # e.g., "D:7" or "D:7p"
+                            name_after_bracket = layer_name[end_bracket+1:].strip()
+                            widget_name = name_after_bracket if name_after_bracket else digit_type.replace(':', '_')
+                            current_widget_info = (digit_type, widget_name)
+                            layer_name = widget_name
+                    # Check if this group is a range [R]
+                    elif layer_name.startswith('[R]'):
+                        # Extract range name
+                        name_after_bracket = layer_name[3:].strip()
+                        widget_name = name_after_bracket if name_after_bracket else 'Range'
+                        current_widget_info = ('R', widget_name)
+                        layer_name = widget_name
                     
                     # Sanitize folder name
                     safe_folder_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in layer_name)
                     safe_folder_name = safe_folder_name.strip().replace(' ', '_')
                     # Add folder to path and recurse
                     new_path = folder_path + [safe_folder_name]
-                    process_layers_recursive(layer, layer_list, parent_offset, new_path, current_toggle)
+                    process_layers_recursive(layer, layer_list, parent_offset, new_path, current_toggle, current_widget_info)
                 else:
                     # Group without name, recurse without changing path
-                    process_layers_recursive(layer, layer_list, parent_offset, folder_path, toggle_path)
+                    process_layers_recursive(layer, layer_list, parent_offset, folder_path, toggle_path, widget_info)
             else:
                 # It's a regular layer
                 current_toggle = toggle_path
+                current_widget_info = widget_info
                 # Check if this layer is a toggle [T]
                 if hasattr(layer, 'name') and layer.name.startswith('[T]'):
                     # Extract toggle name (remove [T] prefix)
                     toggle_name = layer.name[3:]
                     current_toggle = toggle_name
                 
-                # Add it with current folder path and toggle name
-                layer_list.append((layer, folder_path[:], current_toggle))
+                # Add it with current folder path, toggle name, and widget info
+                layer_list.append((layer, folder_path[:], current_toggle, current_widget_info))
     else:
         # This is a single layer (not a group)
         if hasattr(layer_group, 'name') and not layer_group.name.startswith('#'):
@@ -182,10 +203,10 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
             if layer_group.name.startswith('[T]'):
                 toggle_name = layer_group.name[3:]
                 current_toggle = toggle_name
-            layer_list.append((layer_group, folder_path[:], current_toggle))
+            layer_list.append((layer_group, folder_path[:], current_toggle, widget_info))
         elif not hasattr(layer_group, 'name'):
             # Layer without name, add it anyway
-            layer_list.append((layer_group, folder_path[:], toggle_path))
+            layer_list.append((layer_group, folder_path[:], toggle_path, widget_info))
 
 
 def create_lcd_screen_html(output_dir, yaml_filename):
@@ -313,9 +334,32 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                     if (widgetMatch && line.match(/^\\s{2}\\w+:/)) {
                         const widgetName = widgetMatch[1];
                         currentWidget = widgetName;
-                        data.widgets[widgetName] = { layers: [] };
+                        data.widgets[widgetName] = { type: 'toggle', layers: [] };
+                    } else if (currentWidget && line.match(/^\\s{4}(\\w+):\\s*(.*)$/)) {
+                        // Parse widget properties (type, segments, has_decimal, etc.)
+                        const match = line.match(/^\\s{4}(\\w+):\\s*(.*)$/);
+                        const key = match[1];
+                        let value = stripQuotes(match[2]);
+                        
+                        // Skip if this is the 'layers:' line (it will be followed by array items)
+                        if (key === 'layers' && value === '') {
+                            // Ensure layers array exists
+                            if (!data.widgets[currentWidget].layers) {
+                                data.widgets[currentWidget].layers = [];
+                            }
+                        } else {
+                            // Convert boolean strings
+                            if (value === 'true') value = true;
+                            else if (value === 'false') value = false;
+                            else if (!isNaN(value) && value !== '') value = parseInt(value);
+                            data.widgets[currentWidget][key] = value;
+                        }
                     } else if (currentWidget && line.match(/^\\s+-\\s+(.+)$/)) {
                         const layerFile = stripQuotes(line.match(/^\\s+-\\s+(.+)$/)[1]);
+                        // Ensure layers array exists before pushing
+                        if (!data.widgets[currentWidget].layers) {
+                            data.widgets[currentWidget].layers = [];
+                        }
                         data.widgets[currentWidget].layers.push(layerFile);
                     }
                 }
@@ -410,6 +454,21 @@ def create_lcd_screen_html(output_dir, yaml_filename):
             container.style.transform = `scale(${scale})`;
         }
         
+        // 7-segment digit mapping: digit -> segments to display
+        // Segments: A(top), F(top-left), B(top-right), G(middle), E(bottom-left), C(bottom-right), D(bottom)
+        const DIGIT_SEGMENTS = {
+            '0': [true, true, true, false, true, true, true],   // A,F,B,E,C,D
+            '1': [false, false, true, false, false, true, false], // B,C
+            '2': [true, false, true, true, true, false, true],  // A,B,G,E,D
+            '3': [true, false, true, true, false, true, true],  // A,B,G,C,D
+            '4': [false, true, true, true, false, true, false], // F,B,G,C
+            '5': [true, true, false, true, false, true, true],  // A,F,G,C,D
+            '6': [true, true, false, true, true, true, true],   // A,F,G,E,C,D
+            '7': [true, false, true, false, false, true, false], // A,B,C
+            '8': [true, true, true, true, true, true, true],    // All
+            '9': [true, true, true, true, false, true, true]    // A,F,B,G,C,D
+        };
+        
         // SetToggle function - called from parent window
         window.SetToggle = function(name, value) {
             if (!yamlData || !yamlData.widgets || !yamlData.widgets[name]) {
@@ -425,6 +484,68 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                 const img = layerElements[filename];
                 if (img) {
                     img.style.display = value ? 'block' : 'none';
+                }
+            });
+        };
+        
+        // SetDigit function - called from parent window
+        window.SetDigit = function(name, digit, showDecimal) {
+            if (!yamlData || !yamlData.widgets || !yamlData.widgets[name]) {
+                console.warn(`Digit widget "${name}" not found in YAML`);
+                return;
+            }
+            
+            const widget = yamlData.widgets[name];
+            if (widget.type !== 'digit') {
+                console.warn(`Widget "${name}" is not a digit widget`);
+                return;
+            }
+            
+            // Get the segment states for the digit
+            const digitStr = String(digit);
+            const segments = DIGIT_SEGMENTS[digitStr] || [false, false, false, false, false, false, false];
+            
+            // Update visibility of segment layers (first 7 layers are segments)
+            for (let i = 0; i < 7 && i < widget.layers.length; i++) {
+                const filename = widget.layers[i];
+                const img = layerElements[filename];
+                if (img) {
+                    img.style.display = segments[i] ? 'block' : 'none';
+                }
+            }
+            
+            // Handle decimal point (8th layer if it exists)
+            if (widget.has_decimal && widget.layers.length > 7) {
+                const decimalFilename = widget.layers[7];
+                const decimalImg = layerElements[decimalFilename];
+                if (decimalImg) {
+                    decimalImg.style.display = showDecimal ? 'block' : 'none';
+                }
+            }
+        };
+        
+        // SetRange function - called from parent window
+        window.SetRange = function(name, start, end) {
+            if (!yamlData || !yamlData.widgets || !yamlData.widgets[name]) {
+                console.warn(`Range widget "${name}" not found in YAML`);
+                return;
+            }
+            
+            const widget = yamlData.widgets[name];
+            if (widget.type !== 'range') {
+                console.warn(`Widget "${name}" is not a range widget`);
+                return;
+            }
+            
+            // Update visibility based on range
+            // If both start and end are 0, hide all
+            // Otherwise show layers from start-1 to end-1 (0-indexed)
+            widget.layers.forEach((filename, index) => {
+                const img = layerElements[filename];
+                if (img) {
+                    const layerNum = index + 1; // Layer numbers are 1-indexed
+                    const shouldShow = (start > 0 || end > 0) && layerNum >= start && layerNum <= end;
+                    img.style.display = shouldShow ? 'block' : 'none';
                 }
             });
         };
@@ -524,6 +645,36 @@ def create_index_html(output_dir, yaml_filename):
             cursor: pointer;
         }
         
+        .widget input[type="text"],
+        .widget input[type="number"] {
+            padding: 5px;
+            margin: 5px;
+            background-color: #4a4a4a;
+            color: #ffffff;
+            border: 1px solid #5a5a5a;
+            border-radius: 3px;
+            width: 60px;
+            font-size: 14px;
+        }
+        
+        .widget-header {
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #aaaaaa;
+        }
+        
+        .widget-controls {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        
+        .widget-controls label {
+            margin: 0;
+            font-size: 14px;
+        }
+        
         .lcd-panel {
             flex: 1;
             position: relative;
@@ -603,8 +754,31 @@ def create_index_html(output_dir, yaml_filename):
                         const widgetName = widgetMatch[1];
                         currentWidget = widgetName;
                         data.widgets[widgetName] = { type: 'toggle', layers: [] };
+                    } else if (currentWidget && line.match(/^\\s{4}(\\w+):\\s*(.*)$/)) {
+                        // Parse widget properties (type, segments, has_decimal, etc.)
+                        const match = line.match(/^\\s{4}(\\w+):\\s*(.*)$/);
+                        const key = match[1];
+                        let value = stripQuotes(match[2]);
+                        
+                        // Skip if this is the 'layers:' line (it will be followed by array items)
+                        if (key === 'layers' && value === '') {
+                            // Ensure layers array exists
+                            if (!data.widgets[currentWidget].layers) {
+                                data.widgets[currentWidget].layers = [];
+                            }
+                        } else {
+                            // Convert boolean strings
+                            if (value === 'true') value = true;
+                            else if (value === 'false') value = false;
+                            else if (!isNaN(value) && value !== '') value = parseInt(value);
+                            data.widgets[currentWidget][key] = value;
+                        }
                     } else if (currentWidget && line.match(/^\\s+-\\s+(.+)$/)) {
                         const layerFile = stripQuotes(line.match(/^\\s+-\\s+(.+)$/)[1]);
+                        // Ensure layers array exists before pushing
+                        if (!data.widgets[currentWidget].layers) {
+                            data.widgets[currentWidget].layers = [];
+                        }
                         data.widgets[currentWidget].layers.push(layerFile);
                     }
                 }
@@ -632,7 +806,7 @@ def create_index_html(output_dir, yaml_filename):
                 
                 container.innerHTML = '';
                 
-                // Create toggle controls for each widget
+                // Create controls for each widget
                 Object.keys(data.widgets).forEach(widgetName => {
                     const widget = data.widgets[widgetName];
                     
@@ -656,29 +830,138 @@ def create_index_html(output_dir, yaml_filename):
                         label.appendChild(text);
                         widgetDiv.appendChild(label);
                         container.appendChild(widgetDiv);
+                    } else if (widget.type === 'digit') {
+                        const widgetDiv = document.createElement('div');
+                        widgetDiv.className = 'widget';
+                        
+                        const header = document.createElement('div');
+                        header.className = 'widget-header';
+                        header.textContent = widgetName;
+                        widgetDiv.appendChild(header);
+                        
+                        const controls = document.createElement('div');
+                        controls.className = 'widget-controls';
+                        
+                        const digitInput = document.createElement('input');
+                        digitInput.type = 'text';
+                        digitInput.id = `digit-${widgetName}`;
+                        digitInput.value = '0';
+                        digitInput.maxLength = 1;
+                        digitInput.placeholder = '0-9';
+                        digitInput.addEventListener('input', (e) => {
+                            const value = e.target.value;
+                            if (value === '' || (value >= '0' && value <= '9')) {
+                                const decimalCheckbox = document.getElementById(`digit-decimal-${widgetName}`);
+                                const showDecimal = decimalCheckbox ? decimalCheckbox.checked : false;
+                                setDigit(widgetName, value || '0', showDecimal);
+                            } else {
+                                e.target.value = e.target.value.slice(0, -1);
+                            }
+                        });
+                        controls.appendChild(digitInput);
+                        
+                        if (widget.has_decimal) {
+                            const decimalLabel = document.createElement('label');
+                            const decimalCheckbox = document.createElement('input');
+                            decimalCheckbox.type = 'checkbox';
+                            decimalCheckbox.id = `digit-decimal-${widgetName}`;
+                            decimalCheckbox.addEventListener('change', (e) => {
+                                const digitInput = document.getElementById(`digit-${widgetName}`);
+                                setDigit(widgetName, digitInput.value || '0', e.target.checked);
+                            });
+                            decimalLabel.appendChild(decimalCheckbox);
+                            decimalLabel.appendChild(document.createTextNode(' .'));
+                            controls.appendChild(decimalLabel);
+                        }
+                        
+                        widgetDiv.appendChild(controls);
+                        container.appendChild(widgetDiv);
+                    } else if (widget.type === 'range') {
+                        const widgetDiv = document.createElement('div');
+                        widgetDiv.className = 'widget';
+                        
+                        const header = document.createElement('div');
+                        header.className = 'widget-header';
+                        const count = widget.layers ? widget.layers.length : 0;
+                        header.textContent = `${widgetName} (${count})`;
+                        widgetDiv.appendChild(header);
+                        
+                        const controls = document.createElement('div');
+                        controls.className = 'widget-controls';
+                        
+                        const startLabel = document.createElement('span');
+                        startLabel.textContent = 'START:';
+                        controls.appendChild(startLabel);
+                        
+                        const startInput = document.createElement('input');
+                        startInput.type = 'number';
+                        startInput.id = `range-start-${widgetName}`;
+                        startInput.value = '0';
+                        startInput.min = '0';
+                        startInput.max = count.toString();
+                        startInput.addEventListener('input', (e) => {
+                            const endInput = document.getElementById(`range-end-${widgetName}`);
+                            setRange(widgetName, parseInt(e.target.value) || 0, parseInt(endInput.value) || 0);
+                        });
+                        controls.appendChild(startInput);
+                        
+                        const endLabel = document.createElement('span');
+                        endLabel.textContent = 'END:';
+                        controls.appendChild(endLabel);
+                        
+                        const endInput = document.createElement('input');
+                        endInput.type = 'number';
+                        endInput.id = `range-end-${widgetName}`;
+                        endInput.value = '0';
+                        endInput.min = '0';
+                        endInput.max = count.toString();
+                        endInput.addEventListener('input', (e) => {
+                            const startInput = document.getElementById(`range-start-${widgetName}`);
+                            setRange(widgetName, parseInt(startInput.value) || 0, parseInt(e.target.value) || 0);
+                        });
+                        controls.appendChild(endInput);
+                        
+                        widgetDiv.appendChild(controls);
+                        container.appendChild(widgetDiv);
                     }
                 });
                 
                 // Initialize LCD screen iframe reference
                 const iframe = document.getElementById('lcd-screen');
                 
-                function initializeToggles() {
+                function initializeWidgets() {
                     lcdWindow = iframe.contentWindow;
                     
-                    // Initialize all toggles to their current state
+                    // Initialize all widgets to their current state
                     Object.keys(data.widgets).forEach(widgetName => {
-                        const checkbox = document.getElementById(`toggle-${widgetName}`);
-                        if (checkbox) {
-                            setToggle(widgetName, checkbox.checked);
+                        const widget = data.widgets[widgetName];
+                        
+                        if (widget.type === 'toggle') {
+                            const checkbox = document.getElementById(`toggle-${widgetName}`);
+                            if (checkbox) {
+                                setToggle(widgetName, checkbox.checked);
+                            }
+                        } else if (widget.type === 'digit') {
+                            const digitInput = document.getElementById(`digit-${widgetName}`);
+                            const decimalCheckbox = document.getElementById(`digit-decimal-${widgetName}`);
+                            const digit = digitInput ? digitInput.value : '0';
+                            const showDecimal = decimalCheckbox ? decimalCheckbox.checked : false;
+                            setDigit(widgetName, digit, showDecimal);
+                        } else if (widget.type === 'range') {
+                            const startInput = document.getElementById(`range-start-${widgetName}`);
+                            const endInput = document.getElementById(`range-end-${widgetName}`);
+                            const start = startInput ? parseInt(startInput.value) : 0;
+                            const end = endInput ? parseInt(endInput.value) : 0;
+                            setRange(widgetName, start, end);
                         }
                     });
                 }
                 
                 // Check if iframe is already loaded
                 if (iframe.contentWindow && iframe.contentWindow.document.readyState === 'complete') {
-                    initializeToggles();
+                    initializeWidgets();
                 } else {
-                    iframe.addEventListener('load', initializeToggles);
+                    iframe.addEventListener('load', initializeWidgets);
                 }
                 
             } catch (error) {
@@ -692,6 +975,20 @@ def create_index_html(output_dir, yaml_filename):
         function setToggle(name, value) {
             if (lcdWindow && lcdWindow.SetToggle) {
                 lcdWindow.SetToggle(name, value);
+            }
+        }
+        
+        // Set digit state in LCD screen
+        function setDigit(name, digit, showDecimal) {
+            if (lcdWindow && lcdWindow.SetDigit) {
+                lcdWindow.SetDigit(name, digit, showDecimal);
+            }
+        }
+        
+        // Set range state in LCD screen
+        function setRange(name, start, end) {
+            if (lcdWindow && lcdWindow.SetRange) {
+                lcdWindow.SetRange(name, start, end);
             }
         }
         
@@ -747,10 +1044,10 @@ def extract_psb_layers(input_file, output_dir=None):
     
     # Extract each layer and collect widget information
     layers_info = []
-    widgets = {}  # Dictionary to store toggle information
+    widgets = {}  # Dictionary to store toggle, digit, and range information
     base_name = input_path.stem
     
-    for idx, (layer, folder_path, toggle_name) in enumerate(all_layers):
+    for idx, (layer, folder_path, toggle_name, widget_info) in enumerate(all_layers):
         layer_info = extract_layer_image(layer, idx, output_dir, base_name, folder_path, toggle_name)
         if layer_info:
             layers_info.append(layer_info)
@@ -764,6 +1061,27 @@ def extract_psb_layers(input_file, output_dir=None):
                         'layers': []
                     }
                 widgets[toggle_name]['layers'].append(layer_info['filename'])
+            
+            # Collect digit and range widget information
+            if widget_info:
+                widget_type, widget_name = widget_info
+                if widget_name not in widgets:
+                    if widget_type.startswith('D:'):
+                        # Digit widget
+                        has_decimal = widget_type.endswith('p')
+                        widgets[widget_name] = {
+                            'type': 'digit',
+                            'segments': 7,
+                            'has_decimal': has_decimal,
+                            'layers': []
+                        }
+                    elif widget_type == 'R':
+                        # Range widget
+                        widgets[widget_name] = {
+                            'type': 'range',
+                            'layers': []
+                        }
+                widgets[widget_name]['layers'].append(layer_info['filename'])
     
     # Create YAML file
     yaml_filename = f"{base_name}.yml"

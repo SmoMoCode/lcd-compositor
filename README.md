@@ -10,6 +10,8 @@ A Python tool to extract layers from Adobe PSB/PSD files into individual images 
 - Automatically crop each layer to its content bounds
 - Generate a YAML file with layer positions for layout recreation
 - Support for nested layer groups
+- Interactive HTML interface with widget controls
+- Support for Toggle, Digit (7-segment), and Range widgets
 - Easy setup with virtual environment and dependency checking
 
 ## Requirements
@@ -105,19 +107,58 @@ layers:
 
 The `x` and `y` coordinates indicate where the top-left corner of each layer image should be placed to recreate the original layout.
 
-### HTML Preview Page
+### HTML Interface
 
-An HTML preview page (`input_preview.html`) is automatically generated to visualize the extracted layers. Features include:
+Two HTML files are automatically generated for interactive visualization:
 
-- **Interactive Visualization**: View all layers positioned exactly as they appear in the original document
-- **Transparency Support**: Images are displayed with proper transparency handling
-- **Blink Mode**: Toggle to enable/disable random layer blinking at 60Hz for testing visibility
-- **Self-Contained**: The HTML file can be opened directly in a web browser alongside the images and YAML file
-- **No Dependencies**: Works offline without requiring any external libraries or internet connection
+1. **`index.html`** - Main interface with:
+   - **Controls Panel**: Interactive widgets to control layer visibility and state
+   - **LCD Screen**: Real-time preview of the composed layers
+   - **Widget Support**: Toggle, Digit (7-segment), and Range widgets
 
-To use the preview:
-1. Open `input_preview.html` in any modern web browser
-2. Toggle "Blink Mode" to test layer visibility effects
+2. **`lcd-screen.html`** - Embedded LCD screen display (loaded by index.html)
+
+To use the interface:
+1. Open `index.html` in any modern web browser
+2. Use the controls panel on the left to interact with widgets
+3. View real-time updates in the LCD screen on the right
+
+## Widget Types
+
+The tool supports special folder naming conventions to create interactive widgets:
+
+### Toggle Widgets `[T]`
+
+Folders or layers prefixed with `[T]` create a toggle widget:
+- Example: `[T]StatusLight` creates a checkbox control
+- All child layers are shown/hidden together when toggled
+
+### Digit Widgets `[D:7]` or `[D:7p]`
+
+Folders prefixed with `[D:7]` create a 7-segment digit display:
+- `[D:7]Speed` - Standard 7-segment digit (0-9)
+- `[D:7p]Temp` - 7-segment digit with decimal point
+- Layers must be in this order:
+  1. Top segment (A)
+  2. Top-left segment (F)
+  3. Top-right segment (B)
+  4. Middle segment (G)
+  5. Bottom-left segment (E)
+  6. Bottom-right segment (C)
+  7. Bottom segment (D)
+  8. Decimal point (optional, for `[D:7p]`)
+- Creates a text input (0-9) and optional decimal checkbox in the controls
+
+### Range Widgets `[R]`
+
+Folders prefixed with `[R]` create a range widget:
+- Example: `[R]powerLevel` with 10 child layers
+- Creates START and END number inputs
+- Shows layers within the specified range
+- If START=0 and END=0, all layers are hidden
+- If START=1 and END=10, all layers are shown
+- If START=9 and END=10, only the last two layers are shown
+- Widget label shows total count: "powerLevel (10)"
 
 ## Development
 
