@@ -596,7 +596,7 @@ def create_lcd_screen_html(output_dir, yaml_filename):
             '-': [false, false, false, false, false, false, false, true, true, false, false, false, false, false, false, false],
             '_': [false, false, false, false, false, false, false, false, false, false, false, false, false, false, true, true],
             '/': [false, false, false, false, false, false, false, false, false, false, true, false, false, false, false, false],
-            '\\': [false, false, false, true, false, false, false, false, false, false, false, false, true, false, false, false],
+            '\\\\': [false, false, false, true, false, false, false, false, false, false, false, false, true, false, false, false],
             '.': [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false], // Handled separately as decimal point
             '=': [false, false, false, false, false, false, false, true, true, false, false, false, false, false, true, true],
             '+': [false, false, false, false, true, false, false, true, true, false, false, true, false, false, false, false],
@@ -605,7 +605,7 @@ def create_lcd_screen_html(output_dir, yaml_filename):
             ')': [false, false, false, false, false, true, false, false, false, false, true, false, false, false, false, false],
             '[': [true, true, true, false, false, false, false, false, false, true, false, false, false, false, true, true],
             ']': [true, true, false, false, false, false, true, false, false, false, false, false, false, true, true, true],
-            '\'': [false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false],
+            "'": [false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false],
             '"': [false, false, false, false, false, true, true, false, false, false, false, false, false, false, false, false],
         };
         
