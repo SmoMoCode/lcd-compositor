@@ -163,15 +163,17 @@ def process_layers_recursive(layer_group, layer_list, parent_offset=(0, 0), fold
                         end_bracket = layer_name.find(']')
                         if end_bracket > 0:
                             digit_type = layer_name[1:end_bracket]  # e.g., "D:7" or "D:7p"
-                            widget_name = layer_name[end_bracket+1:].strip() if end_bracket < len(layer_name) - 1 else layer_name
+                            name_after_bracket = layer_name[end_bracket+1:].strip()
+                            widget_name = name_after_bracket if name_after_bracket else digit_type.replace(':', '_')
                             current_widget_info = (digit_type, widget_name)
-                            layer_name = widget_name if widget_name else layer_name
+                            layer_name = widget_name
                     # Check if this group is a range [R]
                     elif layer_name.startswith('[R]'):
                         # Extract range name
-                        widget_name = layer_name[3:].strip() if len(layer_name) > 3 else layer_name
+                        name_after_bracket = layer_name[3:].strip()
+                        widget_name = name_after_bracket if name_after_bracket else 'Range'
                         current_widget_info = ('R', widget_name)
-                        layer_name = widget_name if widget_name else layer_name
+                        layer_name = widget_name
                     
                     # Sanitize folder name
                     safe_folder_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in layer_name)
