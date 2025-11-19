@@ -661,7 +661,8 @@ def create_index_html(output_dir, yaml_filename):
                 
                 // Initialize LCD screen iframe reference
                 const iframe = document.getElementById('lcd-screen');
-                iframe.addEventListener('load', () => {
+                
+                function initializeToggles() {
                     lcdWindow = iframe.contentWindow;
                     
                     // Initialize all toggles to their current state
@@ -671,7 +672,14 @@ def create_index_html(output_dir, yaml_filename):
                             setToggle(widgetName, checkbox.checked);
                         }
                     });
-                });
+                }
+                
+                // Check if iframe is already loaded
+                if (iframe.contentWindow && iframe.contentWindow.document.readyState === 'complete') {
+                    initializeToggles();
+                } else {
+                    iframe.addEventListener('load', initializeToggles);
+                }
                 
             } catch (error) {
                 console.error('Error loading widgets:', error);
