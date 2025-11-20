@@ -299,7 +299,16 @@ def create_lcd_screen_html(output_dir, yaml_filename):
         
         let yamlData = null;
         let layerElements = {};
+        let shadowElements = {};
         let toggleStates = {};
+        
+        // Shadow state with default values
+        let shadowState = {
+            isVisible: true,
+            alphaValue: 0.25,
+            offsetDistance: 4,
+            angle: 315
+        };
         
         // Helper function to strip quotes from YAML values
         function stripQuotes(value) {
@@ -495,6 +504,21 @@ def create_lcd_screen_html(output_dir, yaml_filename):
             
             // Create image elements for each layer
             data.layers.forEach((layer, index) => {
+                // Create shadow element first (so it renders behind the main layer)
+                const shadowImg = document.createElement('img');
+                shadowImg.src = layer.filename;
+                shadowImg.style.left = layer.x + 'px';
+                shadowImg.style.top = layer.y + 'px';
+                shadowImg.alt = layer.name + ' (shadow)';
+                shadowImg.title = layer.name + ' (shadow)';
+                shadowImg.dataset.layerIndex = index;
+                shadowImg.dataset.filename = layer.filename;
+                shadowImg.dataset.isShadow = 'true';
+                
+                container.appendChild(shadowImg);
+                shadowElements[layer.filename] = shadowImg;
+                
+                // Create main layer element
                 const img = document.createElement('img');
                 img.src = layer.filename;
                 img.style.left = layer.x + 'px';
@@ -507,6 +531,9 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                 container.appendChild(img);
                 layerElements[layer.filename] = img;
             });
+            
+            // Apply initial shadow settings
+            updateShadows();
             
             // Initialize toggle states
             if (data.widgets) {
@@ -625,7 +652,61 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                 if (img) {
                     img.style.display = value ? 'block' : 'none';
                 }
+                
+                // Update shadow visibility to match
+                const shadowImg = shadowElements[filename];
+                if (shadowImg && shadowState.isVisible) {
+                    shadowImg.style.display = value ? 'block' : 'none';
+                }
             });
+        };
+        
+        // Update shadow positions and visibility
+        function updateShadows() {
+            const { isVisible, alphaValue, offsetDistance, angle } = shadowState;
+            
+            // Calculate offsets based on angle
+            // angle 0 = light from top (shadow goes down): offsetX=0, offsetY=+distance
+            // angle 90 = light from right (shadow goes left): offsetX=-distance, offsetY=0
+            // angle 180 = light from bottom (shadow goes up): offsetX=0, offsetY=-distance
+            // angle 270 = light from left (shadow goes right): offsetX=+distance, offsetY=0
+            const radians = (angle * Math.PI) / 180;
+            const offsetX = -Math.sin(radians) * offsetDistance;
+            const offsetY = Math.cos(radians) * offsetDistance;
+            
+            // Update all shadow elements
+            Object.keys(shadowElements).forEach(filename => {
+                const shadowImg = shadowElements[filename];
+                const mainImg = layerElements[filename];
+                
+                if (shadowImg && mainImg) {
+                    // Get original position from main image
+                    const originalX = parseFloat(mainImg.style.left);
+                    const originalY = parseFloat(mainImg.style.top);
+                    
+                    // Apply shadow offset
+                    shadowImg.style.left = (originalX + offsetX) + 'px';
+                    shadowImg.style.top = (originalY + offsetY) + 'px';
+                    
+                    // Set shadow opacity and visibility
+                    if (isVisible) {
+                        shadowImg.style.display = mainImg.style.display; // Match main layer visibility
+                        shadowImg.style.opacity = alphaValue;
+                    } else {
+                        shadowImg.style.display = 'none';
+                    }
+                }
+            });
+        }
+        
+        // SetShadow function - called from parent window
+        window.SetShadow = function(isVisible, alphaValue, offsetDistance, angle) {
+            shadowState.isVisible = isVisible;
+            shadowState.alphaValue = alphaValue;
+            shadowState.offsetDistance = offsetDistance;
+            shadowState.angle = angle;
+            
+            updateShadows();
         };
         
         // SetDigit function - called from parent window
@@ -664,7 +745,14 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                 const filename = widget.layers[i];
                 const img = layerElements[filename];
                 if (img) {
-                    img.style.display = segmentStates[i] ? 'block' : 'none';
+                    const isVisible = segmentStates[i];
+                    img.style.display = isVisible ? 'block' : 'none';
+                    
+                    // Update shadow visibility
+                    const shadowImg = shadowElements[filename];
+                    if (shadowImg && shadowState.isVisible) {
+                        shadowImg.style.display = isVisible ? 'block' : 'none';
+                    }
                 }
             }
             
@@ -674,6 +762,12 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                 const decimalImg = layerElements[decimalFilename];
                 if (decimalImg) {
                     decimalImg.style.display = showDecimal ? 'block' : 'none';
+                    
+                    // Update shadow visibility for decimal point
+                    const shadowImg = shadowElements[decimalFilename];
+                    if (shadowImg && shadowState.isVisible) {
+                        shadowImg.style.display = showDecimal ? 'block' : 'none';
+                    }
                 }
             }
         };
@@ -700,6 +794,12 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                     const layerNum = index + 1; // Layer numbers are 1-indexed
                     const shouldShow = (start > 0 || end > 0) && layerNum >= start && layerNum <= end;
                     img.style.display = shouldShow ? 'block' : 'none';
+                    
+                    // Update shadow visibility
+                    const shadowImg = shadowElements[filename];
+                    if (shadowImg && shadowState.isVisible) {
+                        shadowImg.style.display = shouldShow ? 'block' : 'none';
+                    }
                 }
             });
         };
@@ -809,6 +909,11 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         if (img) {
                             img.style.display = 'none';
                         }
+                        // Hide shadow too
+                        const shadowImg = shadowElements[filename];
+                        if (shadowImg) {
+                            shadowImg.style.display = 'none';
+                        }
                     }
                     // Hide decimal if present
                     if (digitInfo.has_decimal && digitInfo.layers.length > 7) {
@@ -816,6 +921,11 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         const decimalImg = layerElements[decimalFilename];
                         if (decimalImg) {
                             decimalImg.style.display = 'none';
+                        }
+                        // Hide shadow too
+                        const shadowImg = shadowElements[decimalFilename];
+                        if (shadowImg) {
+                            shadowImg.style.display = 'none';
                         }
                     }
                 } else {
@@ -827,7 +937,14 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         const filename = digitInfo.layers[j];
                         const img = layerElements[filename];
                         if (img) {
-                            img.style.display = segments[j] ? 'block' : 'none';
+                            const isVisible = segments[j];
+                            img.style.display = isVisible ? 'block' : 'none';
+                            
+                            // Update shadow visibility
+                            const shadowImg = shadowElements[filename];
+                            if (shadowImg && shadowState.isVisible) {
+                                shadowImg.style.display = isVisible ? 'block' : 'none';
+                            }
                         }
                     }
                     
@@ -837,6 +954,12 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         const decimalImg = layerElements[decimalFilename];
                         if (decimalImg) {
                             decimalImg.style.display = showDecimal ? 'block' : 'none';
+                            
+                            // Update shadow visibility
+                            const shadowImg = shadowElements[decimalFilename];
+                            if (shadowImg && shadowState.isVisible) {
+                                shadowImg.style.display = showDecimal ? 'block' : 'none';
+                            }
                         }
                     }
                 }
@@ -906,7 +1029,14 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         const filename = digitInfo.layers[j];
                         const img = layerElements[filename];
                         if (img) {
-                            img.style.display = segments[j] ? 'block' : 'none';
+                            const isVisible = segments[j];
+                            img.style.display = isVisible ? 'block' : 'none';
+                            
+                            // Update shadow visibility
+                            const shadowImg = shadowElements[filename];
+                            if (shadowImg && shadowState.isVisible) {
+                                shadowImg.style.display = isVisible ? 'block' : 'none';
+                            }
                         }
                     }
                     
@@ -916,6 +1046,12 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         const decimalImg = layerElements[decimalFilename];
                         if (decimalImg) {
                             decimalImg.style.display = showDecimal ? 'block' : 'none';
+                            
+                            // Update shadow visibility
+                            const shadowImg = shadowElements[decimalFilename];
+                            if (shadowImg && shadowState.isVisible) {
+                                shadowImg.style.display = showDecimal ? 'block' : 'none';
+                            }
                         }
                     }
                 } else {
@@ -925,6 +1061,11 @@ def create_lcd_screen_html(output_dir, yaml_filename):
                         const img = layerElements[filename];
                         if (img) {
                             img.style.display = 'none';
+                        }
+                        // Hide shadow too
+                        const shadowImg = shadowElements[filename];
+                        if (shadowImg) {
+                            shadowImg.style.display = 'none';
                         }
                     }
                 }
@@ -1233,6 +1374,110 @@ def create_index_html(output_dir, yaml_filename):
                 
                 container.innerHTML = '';
                 
+                // Create shadow controls first
+                const shadowDiv = document.createElement('div');
+                shadowDiv.className = 'widget';
+                shadowDiv.style.borderBottom = '2px solid #4a4a4a';
+                shadowDiv.style.marginBottom = '20px';
+                shadowDiv.style.paddingBottom = '15px';
+                
+                const shadowHeader = document.createElement('div');
+                shadowHeader.className = 'widget-header';
+                shadowHeader.textContent = 'Shadow Effect';
+                shadowDiv.appendChild(shadowHeader);
+                
+                // Shadow visibility checkbox
+                const visibilityRow = document.createElement('div');
+                visibilityRow.style.marginBottom = '10px';
+                const visibilityLabel = document.createElement('label');
+                const visibilityCheckbox = document.createElement('input');
+                visibilityCheckbox.type = 'checkbox';
+                visibilityCheckbox.id = 'shadow-visible';
+                visibilityCheckbox.checked = true;
+                visibilityCheckbox.addEventListener('change', updateShadow);
+                visibilityLabel.appendChild(visibilityCheckbox);
+                visibilityLabel.appendChild(document.createTextNode(' Enable Shadow'));
+                visibilityRow.appendChild(visibilityLabel);
+                shadowDiv.appendChild(visibilityRow);
+                
+                // Shadow alpha slider
+                const alphaRow = document.createElement('div');
+                alphaRow.style.marginBottom = '10px';
+                const alphaLabel = document.createElement('span');
+                alphaLabel.textContent = 'Opacity: ';
+                alphaLabel.style.fontSize = '14px';
+                alphaRow.appendChild(alphaLabel);
+                const alphaValue = document.createElement('span');
+                alphaValue.id = 'shadow-alpha-value';
+                alphaValue.textContent = '0.25';
+                alphaValue.style.fontSize = '14px';
+                alphaValue.style.marginLeft = '5px';
+                alphaRow.appendChild(alphaValue);
+                const alphaSlider = document.createElement('input');
+                alphaSlider.type = 'range';
+                alphaSlider.id = 'shadow-alpha';
+                alphaSlider.min = '0';
+                alphaSlider.max = '100';
+                alphaSlider.value = '25';
+                alphaSlider.style.width = '100%';
+                alphaSlider.style.marginTop = '5px';
+                alphaSlider.addEventListener('input', (e) => {
+                    alphaValue.textContent = (e.target.value / 100).toFixed(2);
+                    updateShadow();
+                });
+                alphaRow.appendChild(document.createElement('br'));
+                alphaRow.appendChild(alphaSlider);
+                shadowDiv.appendChild(alphaRow);
+                
+                // Shadow distance input
+                const distanceRow = document.createElement('div');
+                distanceRow.style.marginBottom = '10px';
+                const distanceLabel = document.createElement('span');
+                distanceLabel.textContent = 'Distance: ';
+                distanceLabel.style.fontSize = '14px';
+                distanceRow.appendChild(distanceLabel);
+                const distanceInput = document.createElement('input');
+                distanceInput.type = 'number';
+                distanceInput.id = 'shadow-distance';
+                distanceInput.value = '4';
+                distanceInput.min = '0';
+                distanceInput.max = '50';
+                distanceInput.style.width = '60px';
+                distanceInput.addEventListener('input', updateShadow);
+                distanceRow.appendChild(distanceInput);
+                shadowDiv.appendChild(distanceRow);
+                
+                // Shadow angle slider
+                const angleRow = document.createElement('div');
+                angleRow.style.marginBottom = '10px';
+                const angleLabel = document.createElement('span');
+                angleLabel.textContent = 'Angle: ';
+                angleLabel.style.fontSize = '14px';
+                angleRow.appendChild(angleLabel);
+                const angleValue = document.createElement('span');
+                angleValue.id = 'shadow-angle-value';
+                angleValue.textContent = '315°';
+                angleValue.style.fontSize = '14px';
+                angleValue.style.marginLeft = '5px';
+                angleRow.appendChild(angleValue);
+                const angleSlider = document.createElement('input');
+                angleSlider.type = 'range';
+                angleSlider.id = 'shadow-angle';
+                angleSlider.min = '0';
+                angleSlider.max = '360';
+                angleSlider.value = '315';
+                angleSlider.style.width = '100%';
+                angleSlider.style.marginTop = '5px';
+                angleSlider.addEventListener('input', (e) => {
+                    angleValue.textContent = e.target.value + '°';
+                    updateShadow();
+                });
+                angleRow.appendChild(document.createElement('br'));
+                angleRow.appendChild(angleSlider);
+                shadowDiv.appendChild(angleRow);
+                
+                container.appendChild(shadowDiv);
+                
                 // Create controls for each widget
                 Object.keys(data.widgets).forEach(widgetName => {
                     const widget = data.widgets[widgetName];
@@ -1473,6 +1718,9 @@ def create_index_html(output_dir, yaml_filename):
                 function initializeWidgets() {
                     lcdWindow = iframe.contentWindow;
                     
+                    // Initialize shadow settings with default values
+                    updateShadow();
+                    
                     // Initialize all widgets to their current state
                     Object.keys(data.widgets).forEach(widgetName => {
                         const widget = data.widgets[widgetName];
@@ -1564,6 +1812,23 @@ def create_index_html(output_dir, yaml_filename):
                 const addLeadingZeros = zerosCheckbox ? zerosCheckbox.checked : false;
                 const decimalPlaces = decimalInput ? parseInt(decimalInput.value) || 0 : 0;
                 setNumberValue(name, value, addLeadingZeros, decimalPlaces);
+            }
+        }
+        
+        // Update shadow settings in LCD screen
+        function updateShadow() {
+            const visibleCheckbox = document.getElementById('shadow-visible');
+            const alphaSlider = document.getElementById('shadow-alpha');
+            const distanceInput = document.getElementById('shadow-distance');
+            const angleSlider = document.getElementById('shadow-angle');
+            
+            if (lcdWindow && lcdWindow.SetShadow) {
+                const isVisible = visibleCheckbox ? visibleCheckbox.checked : true;
+                const alphaValue = alphaSlider ? parseFloat(alphaSlider.value) / 100 : 0.25;
+                const offsetDistance = distanceInput ? parseFloat(distanceInput.value) : 4;
+                const angle = angleSlider ? parseFloat(angleSlider.value) : 315;
+                
+                lcdWindow.SetShadow(isVisible, alphaValue, offsetDistance, angle);
             }
         }
         
