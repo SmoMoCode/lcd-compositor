@@ -284,15 +284,14 @@ def test_16_segment_character_patterns():
         'Z': segs_to_array(['a1', 'a2', 'j', 'k', 'd1', 'd2']),
     }
     
-    # Read the actual patterns from the generated HTML
-    # We need to parse the JavaScript to extract the patterns
+    # Read the JavaScript code from extract_layers.py to verify the segment patterns
     import re
     
-    # Read the extract_layers.py file to get the CHAR_16_SEGMENTS
+    # Read only the relevant section containing CHAR_16_SEGMENTS
     with open('extract_layers.py', 'r') as f:
         content = f.read()
     
-    # Find the CHAR_16_SEGMENTS definition in the JavaScript
+    # Extract just the CHAR_16_SEGMENTS definition
     start_marker = "const CHAR_16_SEGMENTS = {"
     end_marker = "};"
     
@@ -301,17 +300,13 @@ def test_16_segment_character_patterns():
         print("✗ Could not find CHAR_16_SEGMENTS in extract_layers.py")
         return False
     
-    # Extract the patterns
     segment_section = content[start_idx:content.find(end_marker, start_idx) + 2]
     
     all_passed = True
     for char, expected in expected_patterns.items():
-        # Find the pattern for this character
-        if char == '\\':
-            pattern_match = re.search(r"'\\\\\\\\': \[(.*?)\]", segment_section)
-        else:
-            escaped_char = re.escape(char)
-            pattern_match = re.search(rf"'{escaped_char}': \[(.*?)\]", segment_section)
+        # Find the pattern for this character using regex
+        escaped_char = re.escape(char)
+        pattern_match = re.search(rf"'{escaped_char}': \[(.*?)\]", segment_section)
         
         if not pattern_match:
             print(f"✗ Could not find pattern for character '{char}'")
