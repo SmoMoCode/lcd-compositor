@@ -240,6 +240,110 @@ def test_string_widget():
         return True
 
 
+def test_16_segment_character_patterns():
+    """Test that key 16-segment character patterns are correct."""
+    print("\nTesting 16-segment character pattern correctness...")
+    
+    # Segment order:
+    # 0:a1, 1:a2, 2:f, 3:h, 4:i, 5:j, 6:b, 7:g1, 8:g2, 9:e, 10:k, 11:l, 12:m, 13:c, 14:d1, 15:d2
+    
+    # Segment name to index mapping for readability
+    SEG = {
+        'a1': 0, 'a2': 1, 'f': 2, 'h': 3, 'i': 4, 'j': 5, 'b': 6,
+        'g1': 7, 'g2': 8, 'e': 9, 'k': 10, 'l': 11, 'm': 12, 'c': 13,
+        'd1': 14, 'd2': 15
+    }
+    
+    def segs_to_array(segment_names):
+        """Convert list of segment names to boolean array."""
+        result = [False] * 16
+        for name in segment_names:
+            if name in SEG:
+                result[SEG[name]] = True
+        return result
+    
+    # Expected patterns for key characters that were previously incorrect
+    expected_patterns = {
+        # '0' should be outer rectangle only (no diagonals)
+        '0': segs_to_array(['a1', 'a2', 'f', 'b', 'e', 'c', 'd1', 'd2']),
+        # '1' should be right side only (b and c)
+        '1': segs_to_array(['b', 'c']),
+        # '2' should have top, right-upper, middle, left-lower, bottom
+        '2': segs_to_array(['a1', 'a2', 'b', 'g1', 'g2', 'e', 'd1', 'd2']),
+        # '3' should have top, right, middle, bottom (no center vertical)
+        '3': segs_to_array(['a1', 'a2', 'b', 'g1', 'g2', 'c', 'd1', 'd2']),
+        # '4' should have upper-left, middle, right (no center vertical)
+        '4': segs_to_array(['f', 'g1', 'g2', 'b', 'c']),
+        # 'K' should have left side, upper-right diagonal, middle-left, lower-right diagonal
+        'K': segs_to_array(['f', 'j', 'g1', 'e', 'm']),
+        # 'V' should have left side with both lower diagonals
+        'V': segs_to_array(['f', 'e', 'k', 'm']),
+        # 'W' should have sides with lower diagonals
+        'W': segs_to_array(['f', 'b', 'e', 'k', 'm', 'c']),
+        # 'Z' should have top, upper-right diagonal, lower-left diagonal, bottom
+        'Z': segs_to_array(['a1', 'a2', 'j', 'k', 'd1', 'd2']),
+    }
+    
+    # Read the actual patterns from the generated HTML
+    # We need to parse the JavaScript to extract the patterns
+    import re
+    
+    # Read the extract_layers.py file to get the CHAR_16_SEGMENTS
+    with open('extract_layers.py', 'r') as f:
+        content = f.read()
+    
+    # Find the CHAR_16_SEGMENTS definition in the JavaScript
+    start_marker = "const CHAR_16_SEGMENTS = {"
+    end_marker = "};"
+    
+    start_idx = content.find(start_marker)
+    if start_idx == -1:
+        print("✗ Could not find CHAR_16_SEGMENTS in extract_layers.py")
+        return False
+    
+    # Extract the patterns
+    segment_section = content[start_idx:content.find(end_marker, start_idx) + 2]
+    
+    all_passed = True
+    for char, expected in expected_patterns.items():
+        # Find the pattern for this character
+        if char == '\\':
+            pattern_match = re.search(r"'\\\\\\\\': \[(.*?)\]", segment_section)
+        else:
+            escaped_char = re.escape(char)
+            pattern_match = re.search(rf"'{escaped_char}': \[(.*?)\]", segment_section)
+        
+        if not pattern_match:
+            print(f"✗ Could not find pattern for character '{char}'")
+            all_passed = False
+            continue
+        
+        # Parse the pattern
+        pattern_str = pattern_match.group(1)
+        actual = [v.strip() == 'true' for v in pattern_str.split(',')]
+        
+        if actual != expected:
+            print(f"✗ Character '{char}' has incorrect pattern")
+            print(f"  Expected: {expected}")
+            print(f"  Actual:   {actual}")
+            
+            # Show which segments differ
+            diffs = []
+            seg_names = ['a1', 'a2', 'f', 'h', 'i', 'j', 'b', 'g1', 'g2', 'e', 'k', 'l', 'm', 'c', 'd1', 'd2']
+            for i, (e, a) in enumerate(zip(expected, actual)):
+                if e != a:
+                    diffs.append(f"{seg_names[i]}:{a}->{e}")
+            print(f"  Changes needed: {', '.join(diffs)}")
+            all_passed = False
+        else:
+            print(f"  ✓ Character '{char}' pattern is correct")
+    
+    if all_passed:
+        print("✓ All 16-segment character patterns are correct")
+    
+    return all_passed
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -271,6 +375,15 @@ def main():
             all_passed = False
     except Exception as e:
         print(f"✗ test_string_widget failed: {e}")
+        import traceback
+        traceback.print_exc()
+        all_passed = False
+    
+    try:
+        if not test_16_segment_character_patterns():
+            all_passed = False
+    except Exception as e:
+        print(f"✗ test_16_segment_character_patterns failed: {e}")
         import traceback
         traceback.print_exc()
         all_passed = False
